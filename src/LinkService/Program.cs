@@ -34,6 +34,53 @@ await Database.MigrateAsync(
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
+// Powers the domain dropdown in the UI.
+app.MapGet("/api/domains", (DomainConfig domains) =>
+    Results.Ok(new { domains = domains.All, @default = domains.Default }));
+
+// The caller's own links; the gateway supplies the trusted owner id.
+app.MapGet("/api/links", async (NpgsqlDataSource db, HttpRequest http) =>
+{
+    if (!long.TryParse(http.Headers[IdentityHeaders.UserId].FirstOrDefault(), out var owner))
+        return Results.Unauthorized();
+
+    var scheme = http.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? http.Scheme;
+    await using var conn = await db.OpenConnectionAsync();
+    var rows = await conn.QueryAsync<LinkRow>(
+        """
+        SELECT domain AS Domain, code AS Code, target_url AS TargetUrl, created_at AS CreatedAt
+        FROM links WHERE owner_id = @owner ORDER BY created_at DESC
+        """,
+        new { owner });
+
+    var links = rows.Select(r => new
+    {
+        r.Code,
+        r.Domain,
+        r.TargetUrl,
+        r.CreatedAt,
+        shortUrl = $"{scheme}://{r.Domain}/{r.Code}",
+        qrUrl = $"/api/links/{r.Code}/qr",
+    });
+    return Results.Ok(new { links });
+});
+
+// A PNG QR code for the short URL. Rendered with QRCoder's pure-managed PNG
+// encoder, so no System.Drawing dependency is needed in the container.
+app.MapGet("/api/links/{code}/qr", async (string code, NpgsqlDataSource db, DomainConfig domains, HttpRequest http) =>
+{
+    await using var conn = await db.OpenConnectionAsync();
+    var link = await conn.QueryFirstOrDefaultAsync<(string Domain, string Code)>(
+        "SELECT domain, code FROM links WHERE code = @code LIMIT 1", new { code });
+    if (link.Domain is null)
+        return Results.NotFound();
+
+    var scheme = http.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? http.Scheme;
+    var shortUrl = $"{scheme}://{link.Domain}/{link.Code}";
+    var png = QrGenerator.Png(shortUrl);
+    return Results.File(png, "image/png");
+});
+
 app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, DomainConfig domains, HttpRequest http) =>
 {
     if (!Uri.TryCreate(req.Url, UriKind.Absolute, out var target) ||
@@ -129,6 +176,8 @@ app.MapGet("/{code}", async (string code, NpgsqlDataSource db, ClickRecorder cli
 app.Run();
 
 public sealed record CreateLinkRequest(string Url, string? Domain, int? CodeLength);
+
+public sealed record LinkRow(string Domain, string Code, string TargetUrl, DateTime CreatedAt);
 
 public static class IdentityHeaders
 {

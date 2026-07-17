@@ -2,16 +2,23 @@
 
 A URL shortener ecosystem built to showcase an API gateway written **from scratch** on Kestrel — no YARP, no off-the-shelf proxy. The gateway does path-based routing, round-robin load balancing across service replicas, hop-by-hop header handling, `X-Forwarded-*` propagation and backend timeouts, with health checks, failover, metrics and autoscaling arriving in later phases.
 
-## Current state (Phase 4)
+## Current state (Phase 5)
 
 ```
-                   ┌──► auth-service ───────┐
-client ──► gateway ─┼──► link-service ×3 ────┼──► postgres
-   (:8080)  │      └──► analytics-service ◄──┘        │
-        JWT auth        ▲   (async click batches)     ▼
-      + rate limit      │                        prometheus ──► grafana
-      + RED metrics     └── redirect hot path enqueues clicks (non-blocking)
+browser ──► web (Next.js :3002) ──/api/* rewrite──┐
+   │                                               ▼
+   └──ws://…/ws/metrics────────►  gateway (:8080) ─┬──► auth-service ───────┐
+                                    JWT auth        ┼──► link-service ×3 ────┼──► postgres
+                                  + rate limit      └──► analytics-service ◄─┘
+                                  + RED metrics          ▲  (async click batches)
+                                  + /ws/metrics feed      └ redirect hot path enqueues clicks
+                                         │
+                                    prometheus ──► grafana
 ```
+
+- `web` — Next.js UI: create links (domain + code-length picker) with an instant QR, register/login, a **dashboard** listing your links with QR thumbnails and a **live gateway telemetry** panel (request rate + sparkline, p50/p95/p99, error ratio, rate-limited/sec, per-backend health) streamed over a WebSocket. Browser calls stay same-origin (`/api/*` rewritten to the gateway); only the metrics WebSocket connects to the gateway directly.
+- **QR codes** — link-service renders PNG QR codes with QRCoder's managed encoder (no System.Drawing), served at `/api/links/{code}/qr`.
+- **Live metrics feed** — the gateway exposes `/ws/metrics`, a WebSocket that pushes RED snapshots assembled from Prometheus instant queries every 2s, so the custom dashboard mirrors Grafana in real time.
 
 - `auth-service` — register/login, Identity password hashing, HMAC-signed JWTs carrying the user's plan; a mock `POST /api/auth/plan` upgrades tiers (real payment lands in phase 6).
 - **Gateway auth** — validates the bearer token and injects trusted `X-User-Id`/`X-User-Plan` headers for backends, **stripping any client-supplied copies first** so those headers are trustworthy by construction. A presented-but-invalid token is rejected with 401.
@@ -45,8 +52,10 @@ docker run --rm --network urlshortener_default -v ./load:/scripts:ro \
 docker compose up --build
 ```
 
+Then open the UI at **http://localhost:3002**, Grafana at **http://localhost:3000**, Prometheus at **http://localhost:9090**.
+
 ```bash
-# create a link through the gateway
+# or drive the API directly through the gateway
 curl -s -X POST localhost:8080/api/links \
   -H 'Content-Type: application/json' \
   -d '{"url": "https://example.com", "codeLength": 6}'

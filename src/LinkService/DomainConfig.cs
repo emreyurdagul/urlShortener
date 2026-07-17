@@ -15,10 +15,13 @@ public sealed class DomainConfig
             throw new ArgumentException("At least one domain must be configured.", nameof(domains));
 
         Default = normalized[0];
+        All = normalized;
         _domains = [.. normalized];
     }
 
     public string Default { get; }
+
+    public IReadOnlyList<string> All { get; }
 
     public bool Contains(string domain) => _domains.Contains(domain.ToLowerInvariant());
 }

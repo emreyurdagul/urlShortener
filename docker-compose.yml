@@ -55,6 +55,19 @@ services:
       postgres:
         condition: service_healthy
 
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    ports:
+      # Host 3001 is taken by another local app, so publish on 3002.
+      - "3002:3001"
+    environment:
+      # Server-side rewrite target for /api/* (browser stays same-origin).
+      GATEWAY_URL: http://gateway:8080
+    depends_on:
+      - gateway
+
   prometheus:
     image: docker.io/prom/prometheus:latest
     ports:

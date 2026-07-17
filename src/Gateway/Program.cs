@@ -10,6 +10,8 @@ builder.Services.AddSingleton(config);
 builder.Services.AddSingleton(new RouteTable(config));
 builder.Services.AddSingleton<ProxyHandler>();
 builder.Services.AddSingleton<JwtValidator>();
+builder.Services.AddSingleton<MetricsFeed>();
+builder.Services.AddHttpClient();
 builder.Services.AddHostedService<HealthMonitor>();
 
 var rateCapacity = builder.Configuration.GetValue("RATE_LIMIT_BURST", 60);
@@ -22,11 +24,27 @@ app.Logger.LogInformation("Gateway routes: {Routes}",
     string.Join(", ", config.Routes.Select(r =>
         $"{r.PathPrefix} -> {r.Pool} [{config.Pools[r.Pool].Count} backend(s)]")));
 
+app.UseWebSockets();
 app.UseRouting();
 app.MapMetrics();
 
+// Live dashboard feed. A gateway-owned terminal branch, so it bypasses the
+// proxy (and the auth/rate-limit chain) just like /metrics does.
+app.Map("/ws/metrics", branch => branch.Run(async context =>
+{
+    if (!context.WebSockets.IsWebSocketRequest)
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        return;
+    }
+
+    using var socket = await context.WebSockets.AcceptWebSocketAsync();
+    var feed = context.RequestServices.GetRequiredService<MetricsFeed>();
+    await feed.StreamAsync(socket, context.RequestAborted);
+}));
+
 // Proxied traffic passes auth then rate limiting before reaching a backend;
-// the gateway's own endpoints (/metrics) bypass both.
+// the gateway's own endpoints (/metrics, /ws/metrics) bypass both.
 var proxy = app.Services.GetRequiredService<ProxyHandler>();
 app.UseWhen(context => context.GetEndpoint() is null, branch =>
 {
