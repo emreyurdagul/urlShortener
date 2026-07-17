@@ -6,6 +6,7 @@ public sealed record GatewayConfig
 {
     public required List<RouteConfig> Routes { get; init; }
     public required Dictionary<string, List<string>> Pools { get; init; }
+    public HealthCheckConfig HealthCheck { get; init; } = new();
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -33,4 +34,11 @@ public sealed record RouteConfig
 {
     public required string PathPrefix { get; init; }
     public required string Pool { get; init; }
+}
+
+public sealed record HealthCheckConfig
+{
+    public string Path { get; init; } = "/health";
+    public double IntervalSeconds { get; init; } = 2;
+    public double TimeoutSeconds { get; init; } = 2;
 }

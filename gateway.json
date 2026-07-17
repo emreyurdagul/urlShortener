@@ -5,7 +5,13 @@
   "pools": {
     "links": [
       "http://urlshortener_link-service_1:8080",
-      "http://urlshortener_link-service_2:8080"
+      "http://urlshortener_link-service_2:8080",
+      "http://urlshortener_link-service_3:8080"
     ]
+  },
+  "healthCheck": {
+    "path": "/health",
+    "intervalSeconds": 2,
+    "timeoutSeconds": 2
   }
 }

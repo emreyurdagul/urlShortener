@@ -19,7 +19,7 @@ services:
       context: .
       dockerfile: src/LinkService/Dockerfile
     deploy:
-      replicas: 2
+      replicas: 3
     environment:
       ConnectionStrings__Db: Host=postgres;Username=shortener;Password=shortener;Database=shortener
       LINK_DOMAINS: localhost:8080

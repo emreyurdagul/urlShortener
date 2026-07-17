@@ -27,61 +27,90 @@ public sealed class ProxyHandler(RouteTable routes, ILogger<ProxyHandler> logger
             return;
         }
 
-        var backend = pool.Next();
-        using var request = BuildRequest(context, backend);
-        var stopwatch = Stopwatch.StartNew();
+        var hasBody = context.Request.ContentLength is > 0 ||
+                      context.Request.Headers.ContainsKey("Transfer-Encoding");
+        // A consumed request body cannot be replayed, so requests with a body
+        // get a single attempt; bodyless requests fail over across the pool.
+        var maxAttempts = hasBody ? 1 : pool.Backends.Count;
 
-        // The timeout covers connect + backend processing up to response headers;
-        // streaming a large body afterwards is only bounded by the client.
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
-        timeoutCts.CancelAfter(BackendTimeout);
-
-        HttpResponseMessage response;
-        try
+        for (var attempt = 1; ; attempt++)
         {
-            response = await Client.SendAsync(request, timeoutCts.Token);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
-        {
-            if (context.RequestAborted.IsCancellationRequested)
-                return;
+            var backend = pool.Next();
+            var stopwatch = Stopwatch.StartNew();
+            using var request = BuildRequest(context, backend.Url, hasBody);
 
-            context.Response.StatusCode = ex is OperationCanceledException
-                ? StatusCodes.Status504GatewayTimeout
-                : StatusCodes.Status502BadGateway;
-            logger.LogWarning("{Method} {Path} -> {Backend} failed after {Elapsed}ms: {Reason}",
-                context.Request.Method, context.Request.Path, backend,
-                stopwatch.ElapsedMilliseconds, ex.Message);
-            return;
-        }
+            // The timeout covers connect + backend processing up to response
+            // headers; streaming a large body afterwards is only bounded by
+            // the client.
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+            timeoutCts.CancelAfter(BackendTimeout);
 
-        using (response)
-        {
-            context.Response.StatusCode = (int)response.StatusCode;
-            CopyResponseHeaders(response, context.Response);
-
+            HttpResponseMessage response;
             try
             {
-                await response.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
+                response = await Client.SendAsync(request, timeoutCts.Token);
             }
-            catch (OperationCanceledException)
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
             {
-                return; // client went away mid-body
+                if (context.RequestAborted.IsCancellationRequested)
+                    return;
+
+                // Connection-level failures mean the request never reached the
+                // backend: safe to eject the backend and retry elsewhere.
+                var neverReachedBackend = ex is HttpRequestException
+                {
+                    HttpRequestError: HttpRequestError.ConnectionError or HttpRequestError.NameResolutionError,
+                };
+
+                if (neverReachedBackend && backend.SetHealthy(false))
+                    logger.LogWarning("Backend {Backend} ejected after a connection failure", backend.Url);
+
+                if (neverReachedBackend && attempt < maxAttempts)
+                {
+                    logger.LogWarning("{Method} {Path} -> {Backend} unreachable, failing over (attempt {Attempt}/{Max})",
+                        context.Request.Method, context.Request.Path, backend.Url, attempt, maxAttempts);
+                    continue;
+                }
+
+                context.Response.StatusCode = ex is OperationCanceledException
+                    ? StatusCodes.Status504GatewayTimeout
+                    : StatusCodes.Status502BadGateway;
+                logger.LogWarning("{Method} {Path} -> {Backend} failed after {Elapsed}ms: {Reason}",
+                    context.Request.Method, context.Request.Path, backend.Url,
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                return;
             }
 
-            logger.LogInformation("{Method} {Path}{Query} -> {Backend} {Status} in {Elapsed}ms",
-                context.Request.Method, context.Request.Path, context.Request.QueryString,
-                backend, (int)response.StatusCode, stopwatch.ElapsedMilliseconds);
+            using (response)
+            {
+                context.Response.StatusCode = (int)response.StatusCode;
+                CopyResponseHeaders(response, context.Response);
+
+                try
+                {
+                    await response.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
+                }
+                catch (OperationCanceledException)
+                {
+                    return; // client went away mid-body
+                }
+
+                logger.LogInformation("{Method} {Path}{Query} -> {Backend} {Status} in {Elapsed}ms",
+                    context.Request.Method, context.Request.Path, context.Request.QueryString,
+                    backend.Url, (int)response.StatusCode, stopwatch.ElapsedMilliseconds);
+            }
+
+            return;
         }
     }
 
-    private static HttpRequestMessage BuildRequest(HttpContext context, string backend)
+    private static HttpRequestMessage BuildRequest(HttpContext context, string backendUrl, bool hasBody)
     {
         var incoming = context.Request;
-        var targetUri = new Uri(new Uri(backend), incoming.Path + incoming.QueryString);
+        var targetUri = new Uri(new Uri(backendUrl), incoming.Path + incoming.QueryString);
         var request = new HttpRequestMessage(new HttpMethod(incoming.Method), targetUri);
 
-        if (incoming.ContentLength is > 0 || incoming.Headers.ContainsKey("Transfer-Encoding"))
+        if (hasBody)
             request.Content = new StreamContent(incoming.Body);
 
         var connectionTokens = ProxyHeaders.ConnectionTokens(incoming.Headers.Connection);

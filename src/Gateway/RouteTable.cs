@@ -11,11 +11,15 @@ public sealed class RouteTable
             p => (IBackendPool)new RoundRobinPool(p.Key, p.Value),
             StringComparer.OrdinalIgnoreCase);
 
+        Pools = pools.Values;
+
         _routes = config.Routes
             .OrderByDescending(r => r.PathPrefix.Length)
             .Select(r => (new PathString(r.PathPrefix == "/" ? null : r.PathPrefix), pools[r.Pool]))
             .ToList();
     }
+
+    public IReadOnlyCollection<IBackendPool> Pools { get; }
 
     public IBackendPool? Match(PathString path)
     {
