@@ -1,0 +1,11 @@
+{
+  "routes": [
+    { "pathPrefix": "/", "pool": "links" }
+  ],
+  "pools": {
+    "links": [
+      "http://urlshortener_link-service_1:8080",
+      "http://urlshortener_link-service_2:8080"
+    ]
+  }
+}

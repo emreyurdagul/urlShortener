@@ -1,0 +1,45 @@
+name: urlshortener
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: src/Gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      GATEWAY_CONFIG: /app/gateway.json
+    volumes:
+      - ./gateway.json:/app/gateway.json:ro,z
+    depends_on:
+      - link-service
+
+  link-service:
+    build:
+      context: .
+      dockerfile: src/LinkService/Dockerfile
+    deploy:
+      replicas: 2
+    environment:
+      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=shortener;Database=shortener
+      LINK_DOMAINS: localhost:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: shortener
+      POSTGRES_PASSWORD: shortener
+      POSTGRES_DB: shortener
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shortener -d shortener"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
