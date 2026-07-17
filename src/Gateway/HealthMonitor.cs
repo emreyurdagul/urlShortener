@@ -49,6 +49,8 @@ public sealed class HealthMonitor(RouteTable routes, GatewayConfig config, ILogg
             healthy = false;
         }
 
+        GatewayMetrics.BackendHealthy.WithLabels(pool.Name, backend.Url).Set(healthy ? 1 : 0);
+
         if (backend.SetHealthy(healthy))
         {
             logger.Log(healthy ? LogLevel.Information : LogLevel.Warning,

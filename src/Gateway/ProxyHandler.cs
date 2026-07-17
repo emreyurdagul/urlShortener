@@ -63,10 +63,14 @@ public sealed class ProxyHandler(RouteTable routes, ILogger<ProxyHandler> logger
                 };
 
                 if (neverReachedBackend && backend.SetHealthy(false))
+                {
+                    GatewayMetrics.BackendHealthy.WithLabels(pool.Name, backend.Url).Set(0);
                     logger.LogWarning("Backend {Backend} ejected after a connection failure", backend.Url);
+                }
 
                 if (neverReachedBackend && attempt < maxAttempts)
                 {
+                    GatewayMetrics.Failovers.WithLabels(pool.Name, backend.Url).Inc();
                     logger.LogWarning("{Method} {Path} -> {Backend} unreachable, failing over (attempt {Attempt}/{Max})",
                         context.Request.Method, context.Request.Path, backend.Url, attempt, maxAttempts);
                     continue;
@@ -75,6 +79,7 @@ public sealed class ProxyHandler(RouteTable routes, ILogger<ProxyHandler> logger
                 context.Response.StatusCode = ex is OperationCanceledException
                     ? StatusCodes.Status504GatewayTimeout
                     : StatusCodes.Status502BadGateway;
+                RecordRequest(pool, backend, context, context.Response.StatusCode, stopwatch);
                 logger.LogWarning("{Method} {Path} -> {Backend} failed after {Elapsed}ms: {Reason}",
                     context.Request.Method, context.Request.Path, backend.Url,
                     stopwatch.ElapsedMilliseconds, ex.Message);
@@ -95,6 +100,7 @@ public sealed class ProxyHandler(RouteTable routes, ILogger<ProxyHandler> logger
                     return; // client went away mid-body
                 }
 
+                RecordRequest(pool, backend, context, (int)response.StatusCode, stopwatch);
                 logger.LogInformation("{Method} {Path}{Query} -> {Backend} {Status} in {Elapsed}ms",
                     context.Request.Method, context.Request.Path, context.Request.QueryString,
                     backend.Url, (int)response.StatusCode, stopwatch.ElapsedMilliseconds);
@@ -102,6 +108,16 @@ public sealed class ProxyHandler(RouteTable routes, ILogger<ProxyHandler> logger
 
             return;
         }
+    }
+
+    private static void RecordRequest(IBackendPool pool, Backend backend, HttpContext context, int statusCode, Stopwatch stopwatch)
+    {
+        GatewayMetrics.Requests
+            .WithLabels(pool.Name, backend.Url, context.Request.Method, statusCode.ToString())
+            .Inc();
+        GatewayMetrics.RequestDuration
+            .WithLabels(pool.Name, backend.Url)
+            .Observe(stopwatch.Elapsed.TotalSeconds);
     }
 
     private static HttpRequestMessage BuildRequest(HttpContext context, string backendUrl, bool hasBody)

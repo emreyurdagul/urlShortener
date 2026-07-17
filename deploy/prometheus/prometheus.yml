@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: gateway
+    static_configs:
+      - targets: ["gateway:8080"]
+
+  # Replicas are scraped individually so per-instance latency and health
+  # are visible; the service-name alias would round-robin between them.
+  - job_name: link-service
+    static_configs:
+      - targets:
+          - "urlshortener_link-service_1:8080"
+          - "urlshortener_link-service_2:8080"
+          - "urlshortener_link-service_3:8080"

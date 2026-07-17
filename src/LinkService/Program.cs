@@ -1,6 +1,7 @@
 using Dapper;
 using LinkService;
 using Npgsql;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,7 +13,14 @@ var configuredDomains = (builder.Configuration["LINK_DOMAINS"] ?? "localhost:808
     .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 builder.Services.AddSingleton(new DomainConfig(configuredDomains));
 
+var linksCreated = Metrics.CreateCounter(
+    "links_created_total", "Short links created.",
+    new CounterConfiguration { LabelNames = ["domain"] });
+
 var app = builder.Build();
+
+app.UseHttpMetrics();
+app.MapMetrics();
 
 await Database.MigrateAsync(
     app.Services.GetRequiredService<NpgsqlDataSource>(),
@@ -48,6 +56,7 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
                 "INSERT INTO links (domain, code, target_url) VALUES (@domain, @code, @targetUrl)",
                 new { domain, code, targetUrl = target.AbsoluteUri });
 
+            linksCreated.WithLabels(domain).Inc();
             var scheme = http.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? http.Scheme;
             return Results.Created($"/api/links/{code}", new
             {
