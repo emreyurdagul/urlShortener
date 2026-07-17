@@ -2,15 +2,22 @@
 
 A URL shortener ecosystem built to showcase an API gateway written **from scratch** on Kestrel — no YARP, no off-the-shelf proxy. The gateway does path-based routing, round-robin load balancing across service replicas, hop-by-hop header handling, `X-Forwarded-*` propagation and backend timeouts, with health checks, failover, metrics and autoscaling arriving in later phases.
 
-## Current state (Phase 3)
+## Current state (Phase 4)
 
 ```
-client ──► gateway (:8080) ──► link-service ×3 ──► postgres
-              round robin           │
-           + health checks          ▼
-           + failover          prometheus (:9090) ──► grafana (:3000)
-           + RED metrics
+                   ┌──► auth-service ───────┐
+client ──► gateway ─┼──► link-service ×3 ────┼──► postgres
+   (:8080)  │      └──► analytics-service ◄──┘        │
+        JWT auth        ▲   (async click batches)     ▼
+      + rate limit      │                        prometheus ──► grafana
+      + RED metrics     └── redirect hot path enqueues clicks (non-blocking)
 ```
+
+- `auth-service` — register/login, Identity password hashing, HMAC-signed JWTs carrying the user's plan; a mock `POST /api/auth/plan` upgrades tiers (real payment lands in phase 6).
+- **Gateway auth** — validates the bearer token and injects trusted `X-User-Id`/`X-User-Plan` headers for backends, **stripping any client-supplied copies first** so those headers are trustworthy by construction. A presented-but-invalid token is rejected with 401.
+- **Rate limiting** — a from-scratch per-client token bucket (keyed by user id, or IP when anonymous); over-limit requests get 429 + `Retry-After` and never reach a backend.
+- **Plan quota** — link-service enforces a per-plan link quota (free = 50, premium = unlimited) using the trusted plan header; over-quota creation returns 403.
+- `analytics-service` — ingests click batches and serves per-code stats. link-service records clicks off the redirect hot path via a bounded `Channel<T>` + background batch shipper, so redirects never wait on analytics (and drop rather than block if the buffer fills).
 
 - `Gateway` — hand-written reverse proxy: config-driven route table, `RoundRobinPool`, streamed request/response bodies, RFC 9110 hop-by-hop header stripping.
 - **Health checks & failover** — a background monitor probes every backend's `/health` on an interval and takes unhealthy replicas out of rotation; on a connection-level failure the proxy ejects the backend immediately and retries the request on the next healthy one (bodyless requests only — a consumed body can't be replayed). Recovered backends rejoin automatically.

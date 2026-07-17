@@ -9,10 +9,16 @@ services:
       - "8080:8080"
     environment:
       GATEWAY_CONFIG: /app/gateway.json
+      # Dev secret shared with auth-service; override via .env in real deploys.
+      JWT_SECRET: ${JWT_SECRET:-dev-only-shared-secret-change-me-32bytes}
+      RATE_LIMIT_BURST: 60
+      RATE_LIMIT_PER_SECOND: 30
     volumes:
       - ./gateway.json:/app/gateway.json:ro,z
     depends_on:
       - link-service
+      - auth-service
+      - analytics-service
 
   link-service:
     build:
@@ -23,6 +29,28 @@ services:
     environment:
       ConnectionStrings__Db: Host=postgres;Username=shortener;Password=shortener;Database=shortener
       LINK_DOMAINS: localhost:8080
+      ANALYTICS_URL: http://analytics-service:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: src/AuthService/Dockerfile
+    environment:
+      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=shortener;Database=shortener
+      JWT_SECRET: ${JWT_SECRET:-dev-only-shared-secret-change-me-32bytes}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  analytics-service:
+    build:
+      context: .
+      dockerfile: src/AnalyticsService/Dockerfile
+    environment:
+      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=shortener;Database=shortener
     depends_on:
       postgres:
         condition: service_healthy

@@ -12,10 +12,15 @@ builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
 var configuredDomains = (builder.Configuration["LINK_DOMAINS"] ?? "localhost:8080")
     .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 builder.Services.AddSingleton(new DomainConfig(configuredDomains));
+builder.Services.AddSingleton<ClickRecorder>();
+builder.Services.AddHttpClient();
+builder.Services.AddHostedService<ClickShipper>();
 
 var linksCreated = Metrics.CreateCounter(
     "links_created_total", "Short links created.",
     new CounterConfiguration { LabelNames = ["domain"] });
+var quotaRejected = Metrics.CreateCounter(
+    "links_quota_rejected_total", "Link creations rejected because the owner hit their plan quota.");
 
 var app = builder.Build();
 
@@ -46,6 +51,29 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
     if (!domains.Contains(domain))
         return Results.BadRequest(new { error = $"domain '{domain}' is not served here." });
 
+    // The gateway authenticates the caller and passes trusted identity headers;
+    // their absence means an anonymous request, which cannot own links.
+    long? ownerId = long.TryParse(http.Headers[IdentityHeaders.UserId].FirstOrDefault(), out var uid) ? uid : null;
+    var plan = http.Headers[IdentityHeaders.UserPlan].FirstOrDefault() ?? "free";
+
+    if (ownerId is { } owner)
+    {
+        var quota = Plans.LinkQuota(plan);
+        if (quota is { } limit)
+        {
+            await using var countConn = await db.OpenConnectionAsync();
+            var owned = await countConn.ExecuteScalarAsync<long>(
+                "SELECT COUNT(*) FROM links WHERE owner_id = @owner", new { owner });
+            if (owned >= limit)
+            {
+                quotaRejected.Inc();
+                return Results.Json(
+                    new { error = $"Plan '{plan}' allows {limit} links; upgrade for more.", quota = limit, used = owned },
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
+        }
+    }
+
     for (var attempt = 0; attempt < 5; attempt++)
     {
         var code = CodeGenerator.Generate(codeLength);
@@ -53,8 +81,8 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
         {
             await using var conn = await db.OpenConnectionAsync();
             await conn.ExecuteAsync(
-                "INSERT INTO links (domain, code, target_url) VALUES (@domain, @code, @targetUrl)",
-                new { domain, code, targetUrl = target.AbsoluteUri });
+                "INSERT INTO links (domain, code, target_url, owner_id) VALUES (@domain, @code, @targetUrl, @ownerId)",
+                new { domain, code, targetUrl = target.AbsoluteUri, ownerId });
 
             linksCreated.WithLabels(domain).Inc();
             var scheme = http.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? http.Scheme;
@@ -74,20 +102,36 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
     return Results.Problem("Could not allocate a unique code, please try again.", statusCode: 500);
 });
 
-app.MapGet("/{code}", async (string code, NpgsqlDataSource db, HttpRequest http) =>
+app.MapGet("/{code}", async (string code, NpgsqlDataSource db, ClickRecorder clicks, HttpRequest http) =>
 {
     // The gateway carries the public hostname in X-Forwarded-Host; that hostname
     // is the domain a short code lives under.
-    var host = http.Headers["X-Forwarded-Host"].FirstOrDefault() ?? http.Host.Value ?? "";
+    var domain = (http.Headers["X-Forwarded-Host"].FirstOrDefault() ?? http.Host.Value ?? "").ToLowerInvariant();
 
     await using var conn = await db.OpenConnectionAsync();
     var target = await conn.QueryFirstOrDefaultAsync<string>(
         "SELECT target_url FROM links WHERE domain = @domain AND code = @code",
-        new { domain = host.ToLowerInvariant(), code });
+        new { domain, code });
 
-    return target is null ? Results.NotFound() : Results.Redirect(target);
+    if (target is null)
+        return Results.NotFound();
+
+    // Fire-and-forget: never let click bookkeeping slow the redirect.
+    clicks.TryRecord(new ClickEvent(
+        domain, code,
+        http.Headers.Referer.FirstOrDefault(),
+        http.Headers.UserAgent.FirstOrDefault(),
+        DateTime.UtcNow));
+
+    return Results.Redirect(target);
 });
 
 app.Run();
 
 public sealed record CreateLinkRequest(string Url, string? Domain, int? CodeLength);
+
+public static class IdentityHeaders
+{
+    public const string UserId = "X-User-Id";
+    public const string UserPlan = "X-User-Plan";
+}

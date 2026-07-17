@@ -1,8 +1,16 @@
 {
   "routes": [
+    { "pathPrefix": "/api/auth", "pool": "auth" },
+    { "pathPrefix": "/api/analytics", "pool": "analytics" },
     { "pathPrefix": "/", "pool": "links" }
   ],
   "pools": {
+    "auth": [
+      "http://urlshortener_auth-service_1:8080"
+    ],
+    "analytics": [
+      "http://urlshortener_analytics-service_1:8080"
+    ],
     "links": [
       "http://urlshortener_link-service_1:8080",
       "http://urlshortener_link-service_2:8080",
