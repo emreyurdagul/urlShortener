@@ -11,14 +11,14 @@ scrape_configs:
   - job_name: link-service
     static_configs:
       - targets:
-          - "urlshortener_link-service_1:8080"
-          - "urlshortener_link-service_2:8080"
-          - "urlshortener_link-service_3:8080"
+          - "link-service-1:8080"
+          - "link-service-2:8080"
+          - "link-service-3:8080"
 
   - job_name: auth-service
     static_configs:
-      - targets: ["urlshortener_auth-service_1:8080"]
+      - targets: ["auth-service:8080"]
 
   - job_name: analytics-service
     static_configs:
-      - targets: ["urlshortener_analytics-service_1:8080"]
+      - targets: ["analytics-service:8080"]

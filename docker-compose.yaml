@@ -25,8 +25,6 @@ services:
       RATE_LIMIT_PER_SECOND: 30
     expose:
       - "8080"
-    volumes:
-      - ./gateway.json:/app/gateway.json:ro,z
     depends_on:
       - link-service-1
       - link-service-2
@@ -119,16 +117,18 @@ services:
       - gateway
 
   prometheus:
-    image: docker.io/prom/prometheus:latest
+    build:
+      context: ./deploy/prometheus
+      dockerfile: Dockerfile
     expose:
       - "9090"
-    volumes:
-      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,z
     depends_on:
       - gateway
 
   grafana:
-    image: docker.io/grafana/grafana:latest
+    build:
+      context: ./deploy/grafana
+      dockerfile: Dockerfile
     environment:
       SERVICE_FQDN_GRAFANA_3000: ${GRAFANA_FQDN:-grafana-kisalt.etkinlikgalerim.online}
       GF_SERVER_ROOT_URL: https://${GRAFANA_FQDN:-grafana-kisalt.etkinlikgalerim.online}
@@ -137,9 +137,6 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
     expose:
       - "3000"
-    volumes:
-      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro,z
-      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro,z
     depends_on:
       - prometheus
 

@@ -8,6 +8,10 @@ RUN dotnet publish src/Gateway/Gateway.csproj -c Release -o /app /p:UseAppHost=f
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app .
+# Bake the routing config in rather than bind-mounting it: Coolify's compose
+# working dir does not reliably expose repo files as bind sources. Local dev
+# (docker-compose.local.yml) still mounts gateway.json over this for live edits.
+COPY gateway.json ./gateway.json
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "Gateway.dll"]
