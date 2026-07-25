@@ -3,7 +3,7 @@ import "./globals.css";
 import { Nav } from "./nav";
 
 export const metadata: Metadata = {
-  title: "Shortlink — from-scratch gateway",
+  title: "shortlink · gateway console",
   description: "URL shortener on a hand-written .NET API gateway",
 };
 

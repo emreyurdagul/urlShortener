@@ -76,7 +76,7 @@ export default function CreatePage() {
               </select>
             </div>
             <div className="field">
-              <label>Code length — {codeLength} chars</label>
+              <label>Code length · {codeLength} chars</label>
               <input
                 type="range"
                 min={5}

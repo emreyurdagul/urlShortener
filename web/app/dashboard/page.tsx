@@ -23,23 +23,18 @@ type Snapshot = {
   backends: { backend: string; healthy: boolean }[];
 };
 
+const BLOCKS = "▁▂▃▄▅▆▇█";
+
+// A terminal-native sparkline: one phosphor block per sample, tallest = live max.
 function Sparkline({ values }: { values: number[] }) {
-  if (values.length < 2) return <svg width="100%" height="40" />;
   const max = Math.max(...values, 1);
-  const w = 100;
-  const pts = values
-    .map((v, i) => `${(i / (values.length - 1)) * w},${40 - (v / max) * 36 - 2}`)
-    .join(" ");
+  const cells = values
+    .map((v) => BLOCKS[Math.min(7, Math.max(0, Math.round((v / max) * 7)))])
+    .join("");
   return (
-    <svg width="100%" height="40" viewBox={`0 0 ${w} 40`} preserveAspectRatio="none">
-      <polyline points={pts} fill="none" stroke="url(#g)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-      <defs>
-        <linearGradient id="g" x1="0" x2="1">
-          <stop offset="0" stopColor="#6d8bff" />
-          <stop offset="1" stopColor="#9d7bff" />
-        </linearGradient>
-      </defs>
-    </svg>
+    <div className="spark" aria-hidden="true">
+      {cells || " ".repeat(8)}
+    </div>
   );
 }
 
@@ -97,7 +92,7 @@ export default function DashboardPage() {
 
       <div className="card">
         <div className="section-title">
-          Gateway — live
+          Gateway telemetry
           <span className="live">
             <span className={`dot ${connected ? "up" : "down"}`} />
             {connected ? "streaming" : "reconnecting…"}
@@ -144,7 +139,7 @@ export default function DashboardPage() {
         {loading ? (
           <div className="empty">Loading…</div>
         ) : links.length === 0 ? (
-          <div className="empty">No links yet — create one to see it here.</div>
+          <div className="empty">No links yet. Create one to see it here.</div>
         ) : (
           <table className="links-table">
             <thead>

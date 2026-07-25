@@ -6,15 +6,15 @@
   ],
   "pools": {
     "auth": [
-      "http://urlshortener_auth-service_1:8080"
+      "http://auth-service:8080"
     ],
     "analytics": [
-      "http://urlshortener_analytics-service_1:8080"
+      "http://analytics-service:8080"
     ],
     "links": [
-      "http://urlshortener_link-service_1:8080",
-      "http://urlshortener_link-service_2:8080",
-      "http://urlshortener_link-service_3:8080"
+      "http://link-service-1:8080",
+      "http://link-service-2:8080",
+      "http://link-service-3:8080"
     ]
   },
   "healthCheck": {

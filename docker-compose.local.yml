@@ -1,0 +1,119 @@
+# Local development stack (podman-compose / docker compose).
+#
+#   podman-compose -f docker-compose.local.yml up --build
+#
+# Publishes host ports for direct access. The root docker-compose.yml is the
+# Coolify production variant (domain-routed, no host ports, env secrets).
+name: urlshortener
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: src/Gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      GATEWAY_CONFIG: /app/gateway.json
+      JWT_SECRET: ${JWT_SECRET:-dev-only-shared-secret-change-me-32bytes}
+      RATE_LIMIT_BURST: 60
+      RATE_LIMIT_PER_SECOND: 30
+    volumes:
+      - ./gateway.json:/app/gateway.json:ro,z
+    depends_on:
+      - link-service-1
+      - link-service-2
+      - link-service-3
+      - auth-service
+      - analytics-service
+
+  link-service-1: &link-service
+    build:
+      context: .
+      dockerfile: src/LinkService/Dockerfile
+    environment:
+      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=shortener;Database=shortener
+      LINK_DOMAINS: localhost:8080
+      ANALYTICS_URL: http://analytics-service:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+  link-service-2:
+    <<: *link-service
+  link-service-3:
+    <<: *link-service
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: src/AuthService/Dockerfile
+    environment:
+      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=shortener;Database=shortener
+      JWT_SECRET: ${JWT_SECRET:-dev-only-shared-secret-change-me-32bytes}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  analytics-service:
+    build:
+      context: .
+      dockerfile: src/AnalyticsService/Dockerfile
+    environment:
+      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=shortener;Database=shortener
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        GATEWAY_URL: http://gateway:8080
+    ports:
+      # Host 3001 is taken by another local app, so publish on 3002.
+      - "3002:3001"
+    environment:
+      GATEWAY_URL: http://gateway:8080
+    depends_on:
+      - gateway
+
+  prometheus:
+    image: docker.io/prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,z
+    depends_on:
+      - gateway
+
+  grafana:
+    image: docker.io/grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro,z
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro,z
+    depends_on:
+      - prometheus
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: shortener
+      POSTGRES_PASSWORD: shortener
+      POSTGRES_DB: shortener
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shortener -d shortener"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

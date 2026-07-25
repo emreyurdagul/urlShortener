@@ -1,3 +1,13 @@
+# Production stack for Coolify (Docker Compose build pack).
+#
+# Differences from local dev (see docker-compose.local.yml):
+#   - No host port publishing. Coolify's Traefik routes the public services by
+#     domain via the SERVICE_FQDN_* magic env vars below; everything else is
+#     reachable only on the internal compose network via its service name.
+#   - Secrets (JWT_SECRET, POSTGRES_PASSWORD) come from Coolify env vars.
+#   - link-service is 3 explicit services: Coolify runs plain `docker compose`
+#     (not swarm), so `deploy.replicas` is ignored. gateway.json load-balances
+#     across link-service-1/2/3 by name.
 name: urlshortener
 
 services:
@@ -5,31 +15,63 @@ services:
     build:
       context: .
       dockerfile: src/Gateway/Dockerfile
-    ports:
-      - "8080:8080"
     environment:
+      # Public entrypoint for /api/*, short-link redirects, and the /ws/metrics
+      # WebSocket. Traefik terminates TLS and forwards to container port 8080.
+      SERVICE_FQDN_GATEWAY_8080: ${GATEWAY_FQDN:-api-kisalt.etkinlikgalerim.online}
       GATEWAY_CONFIG: /app/gateway.json
-      # Dev secret shared with auth-service; override via .env in real deploys.
-      JWT_SECRET: ${JWT_SECRET:-dev-only-shared-secret-change-me-32bytes}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
       RATE_LIMIT_BURST: 60
       RATE_LIMIT_PER_SECOND: 30
+    expose:
+      - "8080"
     volumes:
       - ./gateway.json:/app/gateway.json:ro,z
     depends_on:
-      - link-service
+      - link-service-1
+      - link-service-2
+      - link-service-3
       - auth-service
       - analytics-service
 
-  link-service:
+  link-service-1:
     build:
       context: .
       dockerfile: src/LinkService/Dockerfile
-    deploy:
-      replicas: 3
     environment:
-      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=shortener;Database=shortener
-      LINK_DOMAINS: localhost:8080
+      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=${POSTGRES_PASSWORD:-shortener};Database=shortener
+      LINK_DOMAINS: ${LINK_DOMAINS:-api-kisalt.etkinlikgalerim.online}
       ANALYTICS_URL: http://analytics-service:8080
+    expose:
+      - "8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  link-service-2:
+    build:
+      context: .
+      dockerfile: src/LinkService/Dockerfile
+    environment:
+      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=${POSTGRES_PASSWORD:-shortener};Database=shortener
+      LINK_DOMAINS: ${LINK_DOMAINS:-api-kisalt.etkinlikgalerim.online}
+      ANALYTICS_URL: http://analytics-service:8080
+    expose:
+      - "8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  link-service-3:
+    build:
+      context: .
+      dockerfile: src/LinkService/Dockerfile
+    environment:
+      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=${POSTGRES_PASSWORD:-shortener};Database=shortener
+      LINK_DOMAINS: ${LINK_DOMAINS:-api-kisalt.etkinlikgalerim.online}
+      ANALYTICS_URL: http://analytics-service:8080
+    expose:
+      - "8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,8 +81,10 @@ services:
       context: .
       dockerfile: src/AuthService/Dockerfile
     environment:
-      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=shortener;Database=shortener
-      JWT_SECRET: ${JWT_SECRET:-dev-only-shared-secret-change-me-32bytes}
+      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=${POSTGRES_PASSWORD:-shortener};Database=shortener
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
+    expose:
+      - "8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,7 +94,9 @@ services:
       context: .
       dockerfile: src/AnalyticsService/Dockerfile
     environment:
-      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=shortener;Database=shortener
+      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=${POSTGRES_PASSWORD:-shortener};Database=shortener
+    expose:
+      - "8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,19 +105,23 @@ services:
     build:
       context: .
       dockerfile: web/Dockerfile
-    ports:
-      # Host 3001 is taken by another local app, so publish on 3002.
-      - "3002:3001"
+      args:
+        # Server-side rewrite target for /api/* (browser stays same-origin).
+        GATEWAY_URL: http://gateway:8080
+        # Baked into the client bundle; must be the gateway's public wss URL.
+        NEXT_PUBLIC_GATEWAY_WS: ${GATEWAY_WS:-wss://api-kisalt.etkinlikgalerim.online/ws/metrics}
     environment:
-      # Server-side rewrite target for /api/* (browser stays same-origin).
+      SERVICE_FQDN_WEB_3001: ${WEB_FQDN:-kisalt.etkinlikgalerim.online}
       GATEWAY_URL: http://gateway:8080
+    expose:
+      - "3001"
     depends_on:
       - gateway
 
   prometheus:
     image: docker.io/prom/prometheus:latest
-    ports:
-      - "9090:9090"
+    expose:
+      - "9090"
     volumes:
       - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,z
     depends_on:
@@ -79,12 +129,14 @@ services:
 
   grafana:
     image: docker.io/grafana/grafana:latest
-    ports:
-      - "3000:3000"
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      SERVICE_FQDN_GRAFANA_3000: ${GRAFANA_FQDN:-grafana-kisalt.etkinlikgalerim.online}
+      GF_SERVER_ROOT_URL: https://${GRAFANA_FQDN:-grafana-kisalt.etkinlikgalerim.online}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    expose:
+      - "3000"
     volumes:
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro,z
       - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro,z
@@ -95,7 +147,7 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: shortener
-      POSTGRES_PASSWORD: shortener
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shortener}
       POSTGRES_DB: shortener
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U shortener -d shortener"]
