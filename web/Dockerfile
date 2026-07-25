@@ -19,6 +19,9 @@ FROM docker.io/library/node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# Next's standalone server must bind all interfaces so the reverse proxy
+# (a separate container) can reach it; otherwise it listens on localhost only.
+ENV HOSTNAME=0.0.0.0
 # Next.js standalone output bundles a minimal server + node_modules.
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
