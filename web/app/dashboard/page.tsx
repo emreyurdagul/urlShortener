@@ -14,6 +14,8 @@ type LinkItem = {
   createdAt: string;
 };
 
+type Stats = { total: number; lastClick: string | null };
+
 type Snapshot = {
   requestRate: number;
   errorRatio: number;
@@ -43,6 +45,7 @@ export default function DashboardPage() {
   const { t } = useI18n();
   const router = useRouter();
   const [links, setLinks] = useState<LinkItem[]>([]);
+  const [stats, setStats] = useState<Record<string, Stats>>({});
   const [loading, setLoading] = useState(true);
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [connected, setConnected] = useState(false);
@@ -54,7 +57,20 @@ export default function DashboardPage() {
       return;
     }
     api<{ links: LinkItem[] }>("/api/links")
-      .then((d) => setLinks(d.links))
+      .then((d) => {
+        setLinks(d.links);
+        // Per-link click totals from the analytics service. N calls (one per
+        // link) is fine at this scale; a batch endpoint would be the next step.
+        Promise.all(
+          d.links.map((l) =>
+            api<Stats & { code: string }>(
+              `/api/analytics/${encodeURIComponent(l.code)}?domain=${encodeURIComponent(l.domain)}`,
+            )
+              .then((s) => [l.code, { total: s.total, lastClick: s.lastClick }] as const)
+              .catch(() => [l.code, { total: 0, lastClick: null }] as const),
+          ),
+        ).then((entries) => setStats(Object.fromEntries(entries)));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [router]);
@@ -154,24 +170,34 @@ export default function DashboardPage() {
                 <th>{t("dash.colQr")}</th>
                 <th>{t("dash.colShort")}</th>
                 <th>{t("dash.colDest")}</th>
+                <th className="num-col">{t("dash.colClicks")}</th>
                 <th>{t("dash.colCreated")}</th>
               </tr>
             </thead>
             <tbody>
-              {links.map((l) => (
-                <tr key={l.code}>
-                  <td>
-                    <img src={l.qrUrl} alt="QR" />
-                  </td>
-                  <td className="code">
-                    <a href={l.shortUrl} target="_blank" rel="noreferrer">
-                      {l.domain}/{l.code}
-                    </a>
-                  </td>
-                  <td className="tgt">{l.targetUrl}</td>
-                  <td className="tgt">{new Date(l.createdAt).toLocaleDateString()}</td>
-                </tr>
-              ))}
+              {links.map((l) => {
+                const s = stats[l.code];
+                return (
+                  <tr key={l.code}>
+                    <td>
+                      <img src={l.qrUrl} alt="QR" />
+                    </td>
+                    <td className="code">
+                      <a href={l.shortUrl} target="_blank" rel="noreferrer">
+                        {l.domain}/{l.code}
+                      </a>
+                    </td>
+                    <td className="tgt">{l.targetUrl}</td>
+                    <td className="clicks">
+                      <span className="clicks-n">{s ? s.total : "·"}</span>
+                      {s?.lastClick && (
+                        <span className="clicks-last">{new Date(s.lastClick).toLocaleDateString()}</span>
+                      )}
+                    </td>
+                    <td className="tgt">{new Date(l.createdAt).toLocaleDateString()}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

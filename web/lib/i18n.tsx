@@ -48,6 +48,7 @@ const en: Dict = {
   "dash.colQr": "QR",
   "dash.colShort": "Short",
   "dash.colDest": "Destination",
+  "dash.colClicks": "Clicks",
   "dash.colCreated": "Created",
 
   "auth.welcomeBack": "Welcome back",
@@ -101,6 +102,7 @@ const tr: Dict = {
   "dash.colQr": "QR",
   "dash.colShort": "Kısa",
   "dash.colDest": "Hedef",
+  "dash.colClicks": "Tıklama",
   "dash.colCreated": "Tarih",
 
   "auth.welcomeBack": "Tekrar hoş geldin",
@@ -154,6 +156,7 @@ const de: Dict = {
   "dash.colQr": "QR",
   "dash.colShort": "Kurz",
   "dash.colDest": "Ziel",
+  "dash.colClicks": "Klicks",
   "dash.colCreated": "Erstellt",
 
   "auth.welcomeBack": "Willkommen zurück",
@@ -207,6 +210,7 @@ const ar: Dict = {
   "dash.colQr": "QR",
   "dash.colShort": "المختصر",
   "dash.colDest": "الوجهة",
+  "dash.colClicks": "النقرات",
   "dash.colCreated": "التاريخ",
 
   "auth.welcomeBack": "مرحبًا بعودتك",

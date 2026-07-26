@@ -234,6 +234,18 @@ button.ghost:hover { background: var(--ground-2); color: var(--amber-bright); bo
   color: var(--dim); font-size: 12px;
   max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.links-table .num-col { text-align: right; }
+.links-table .clicks { text-align: right; white-space: nowrap; }
+.links-table .clicks-n {
+  font-weight: 700; color: var(--amber-bright); font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px var(--glow);
+}
+.links-table .clicks-last {
+  display: block; color: var(--dim); font-size: 10.5px; margin-top: 2px;
+}
+[dir="rtl"] .links-table .num-col,
+[dir="rtl"] .links-table .clicks { text-align: left; }
+[dir="rtl"] .links-table .clicks { direction: ltr; }
 
 /* ── Instrument strip: RED metrics as a ruled readout ────────── */
 .metrics-grid {
