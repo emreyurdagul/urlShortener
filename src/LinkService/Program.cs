@@ -12,6 +12,7 @@ builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
 var configuredDomains = (builder.Configuration["LINK_DOMAINS"] ?? "localhost:8080")
     .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 builder.Services.AddSingleton(new DomainConfig(configuredDomains));
+builder.Services.AddSingleton<LinkCache>();
 builder.Services.AddSingleton<ClickRecorder>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<ClickShipper>();
@@ -149,19 +150,26 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
     return Results.Problem("Could not allocate a unique code, please try again.", statusCode: 500);
 });
 
-app.MapGet("/{code}", async (string code, NpgsqlDataSource db, ClickRecorder clicks, HttpRequest http) =>
+app.MapGet("/{code}", async (string code, NpgsqlDataSource db, LinkCache cache, ClickRecorder clicks, HttpRequest http) =>
 {
     // The gateway carries the public hostname in X-Forwarded-Host; that hostname
     // is the domain a short code lives under.
     var domain = (http.Headers["X-Forwarded-Host"].FirstOrDefault() ?? http.Host.Value ?? "").ToLowerInvariant();
 
-    await using var conn = await db.OpenConnectionAsync();
-    var target = await conn.QueryFirstOrDefaultAsync<string>(
-        "SELECT target_url FROM links WHERE domain = @domain AND code = @code",
-        new { domain, code });
+    // Hot path: immutable code -> target, so most hits never touch Postgres.
+    if (!cache.TryGet(domain, code, out var target))
+    {
+        await using var conn = await db.OpenConnectionAsync();
+        var found = await conn.QueryFirstOrDefaultAsync<string?>(
+            "SELECT target_url FROM links WHERE domain = @domain AND code = @code",
+            new { domain, code });
 
-    if (target is null)
-        return Results.NotFound();
+        if (found is null)
+            return Results.NotFound();
+
+        target = found;
+        cache.Set(domain, code, target);
+    }
 
     // Fire-and-forget: never let click bookkeeping slow the redirect.
     clicks.TryRecord(new ClickEvent(
