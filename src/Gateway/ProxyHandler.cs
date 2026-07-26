@@ -147,7 +147,11 @@ public sealed class ProxyHandler(RouteTable routes, ILogger<ProxyHandler> logger
         if (forwardedFor.Count > 0)
             request.Headers.TryAddWithoutValidation("X-Forwarded-For", string.Join(", ", forwardedFor));
 
-        request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", incoming.Scheme);
+        // Honor an upstream proxy's scheme (e.g. Traefik terminating TLS in
+        // front of us) rather than our own http hop; only synthesize it when no
+        // trusted proxy set it.
+        var forwardedProto = incoming.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? incoming.Scheme;
+        request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", forwardedProto);
         if (incoming.Host.HasValue)
             request.Headers.TryAddWithoutValidation("X-Forwarded-Host", incoming.Host.Value);
 
