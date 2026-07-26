@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, getSession } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 
 type LinkItem = {
   code: string;
@@ -39,6 +40,7 @@ function Sparkline({ values }: { values: number[] }) {
 }
 
 export default function DashboardPage() {
+  const { t } = useI18n();
   const router = useRouter();
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,38 +88,43 @@ export default function DashboardPage() {
   return (
     <div>
       <div className="hero">
-        <h1>Dashboard</h1>
-        <p>Your links and live gateway telemetry.</p>
+        <h1>{t("dash.title")}</h1>
+        <p>{t("dash.subtitle")}</p>
       </div>
 
       <div className="card">
         <div className="section-title">
-          Gateway telemetry
+          {t("dash.telemetry")}
           <span className="live">
             <span className={`dot ${connected ? "up" : "down"}`} />
-            {connected ? "streaming" : "reconnecting…"}
+            {connected ? t("dash.streaming") : t("dash.reconnecting")}
           </span>
         </div>
 
         <div className="metrics-grid">
           <div className="stat">
-            <div className="k">Requests / sec</div>
+            <div className="k">{t("dash.reqPerSec")}</div>
             <div className="v">{snap ? snap.requestRate.toFixed(1) : "—"}</div>
             <Sparkline values={history.current} />
           </div>
           <div className="stat">
-            <div className="k">Latency p95</div>
+            <div className="k">{t("dash.latencyP95")}</div>
             <div className="v">
               {snap ? snap.p95Ms.toFixed(1) : "—"} <small>ms</small>
             </div>
-            <div className="hint">p50 {snap ? snap.p50Ms.toFixed(1) : "—"} · p99 {snap ? snap.p99Ms.toFixed(1) : "—"} ms</div>
+            <div className="hint">
+              {t("dash.percentiles", {
+                p50: snap ? snap.p50Ms.toFixed(1) : "—",
+                p99: snap ? snap.p99Ms.toFixed(1) : "—",
+              })}
+            </div>
           </div>
           <div className="stat">
-            <div className="k">Error ratio</div>
+            <div className="k">{t("dash.errorRatio")}</div>
             <div className="v">{snap ? (snap.errorRatio * 100).toFixed(2) : "—"}<small>%</small></div>
           </div>
           <div className="stat">
-            <div className="k">Rate-limited / sec</div>
+            <div className="k">{t("dash.rateLimited")}</div>
             <div className="v">{snap ? snap.rateLimitedRate.toFixed(1) : "—"}</div>
           </div>
         </div>
@@ -135,19 +142,19 @@ export default function DashboardPage() {
       </div>
 
       <div className="card">
-        <div className="section-title">Your links</div>
+        <div className="section-title">{t("dash.yourLinks")}</div>
         {loading ? (
-          <div className="empty">Loading…</div>
+          <div className="empty">{t("dash.loading")}</div>
         ) : links.length === 0 ? (
-          <div className="empty">No links yet. Create one to see it here.</div>
+          <div className="empty">{t("dash.empty")}</div>
         ) : (
           <table className="links-table">
             <thead>
               <tr>
-                <th>QR</th>
-                <th>Short</th>
-                <th>Destination</th>
-                <th>Created</th>
+                <th>{t("dash.colQr")}</th>
+                <th>{t("dash.colShort")}</th>
+                <th>{t("dash.colDest")}</th>
+                <th>{t("dash.colCreated")}</th>
               </tr>
             </thead>
             <tbody>

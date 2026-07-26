@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 
 type Domains = { domains: string[]; default: string };
 type Created = { code: string; domain: string; shortUrl: string };
 
 export default function CreatePage() {
+  const { t } = useI18n();
   const [url, setUrl] = useState("");
   const [domain, setDomain] = useState("");
   const [codeLength, setCodeLength] = useState(7);
@@ -37,7 +39,7 @@ export default function CreatePage() {
       setResult(created);
       setUrl("");
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Something went wrong";
+      const msg = err instanceof ApiError ? err.message : t("common.error");
       setError(msg);
     } finally {
       setBusy(false);
@@ -47,18 +49,18 @@ export default function CreatePage() {
   return (
     <div>
       <div className="hero">
-        <h1>Shorten a link</h1>
-        <p>Pick a domain, choose how short the code should be, get an instant QR.</p>
+        <h1>{t("create.title")}</h1>
+        <p>{t("create.subtitle")}</p>
       </div>
 
       <div className="card">
         <form onSubmit={submit}>
           <div className="field">
-            <label>Destination URL</label>
+            <label>{t("create.url")}</label>
             <input
               type="url"
               required
-              placeholder="https://example.com/some/long/path"
+              placeholder={t("create.urlPlaceholder")}
               value={url}
               onChange={(e) => setUrl(e.target.value)}
             />
@@ -66,7 +68,7 @@ export default function CreatePage() {
 
           <div className="row">
             <div className="field">
-              <label>Domain</label>
+              <label>{t("create.domain")}</label>
               <select value={domain} onChange={(e) => setDomain(e.target.value)}>
                 {domains.map((d) => (
                   <option key={d} value={d}>
@@ -76,7 +78,7 @@ export default function CreatePage() {
               </select>
             </div>
             <div className="field">
-              <label>Code length · {codeLength} chars</label>
+              <label>{t("create.codeLength", { n: codeLength })}</label>
               <input
                 type="range"
                 min={5}
@@ -84,12 +86,12 @@ export default function CreatePage() {
                 value={codeLength}
                 onChange={(e) => setCodeLength(Number(e.target.value))}
               />
-              <div className="hint">4-char codes unlock with premium.</div>
+              <div className="hint">{t("create.premiumHint")}</div>
             </div>
           </div>
 
           <button type="submit" disabled={busy}>
-            {busy ? "Shortening…" : "Shorten"}
+            {busy ? t("create.submitBusy") : t("create.submit")}
           </button>
           {error && <div className="error">{error}</div>}
         </form>
@@ -103,13 +105,13 @@ export default function CreatePage() {
                   {result.shortUrl}
                 </a>
               </div>
-              <div className="target">code {result.code} · on {result.domain}</div>
+              <div className="target">{t("create.resultMeta", { code: result.code, domain: result.domain })}</div>
               <div style={{ marginTop: 10 }}>
                 <button
                   className="ghost"
                   onClick={() => navigator.clipboard?.writeText(result.shortUrl)}
                 >
-                  Copy link
+                  {t("create.copy")}
                 </button>
               </div>
             </div>

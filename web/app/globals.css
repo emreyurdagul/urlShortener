@@ -84,6 +84,14 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .nav a.active { color: var(--amber-bright); }
 .nav a.active::before, .nav a.active::after { color: var(--line-bright); }
 .nav a:hover { color: var(--amber-bright); text-decoration: none; }
+.nav .lang {
+  width: auto; padding: 3px 6px; font-size: 11px; letter-spacing: 1px;
+  background: transparent; border: 1px solid var(--line); color: var(--dim);
+  border-radius: 0; cursor: pointer; text-transform: uppercase;
+}
+.nav .lang:hover { color: var(--amber-bright); border-color: var(--line-bright); }
+.nav .lang:focus { box-shadow: none; border-color: var(--line-bright); }
+.nav .lang option { background: var(--ground-2); color: var(--amber); }
 
 /* ── Hero ────────────────────────────────────────────────────── */
 .hero h1 {
@@ -297,6 +305,21 @@ button.ghost:hover { background: var(--ground-2); color: var(--amber-bright); bo
   text-align: center; padding: 44px 0;
 }
 .empty::before { content: "// "; color: var(--faint); }
+
+/* ── RTL (Arabic) ────────────────────────────────────────────── */
+/* Most flex/grid layout mirrors automatically under dir="rtl"; these fix the
+   few absolutely-positioned bits and keep technical values reading LTR. */
+[dir="rtl"] .section-title { left: auto; right: 16px; }
+[dir="rtl"] .stat .v,
+[dir="rtl"] .spark,
+[dir="rtl"] .result .short,
+[dir="rtl"] .links-table .code,
+[dir="rtl"] .links-table .tgt {
+  direction: ltr;
+}
+[dir="rtl"] .links-table th,
+[dir="rtl"] .links-table td { text-align: right; }
+[dir="rtl"] .result .short a::before { content: "↰ "; }
 
 /* ── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 640px) {

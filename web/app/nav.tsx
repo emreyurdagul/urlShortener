@@ -4,9 +4,29 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearSession, getSession, type Session } from "@/lib/api";
+import { LOCALES, LOCALE_LABELS, useI18n, type Locale } from "@/lib/i18n";
+
+function LangSwitcher() {
+  const { locale, setLocale, t } = useI18n();
+  return (
+    <select
+      className="lang"
+      value={locale}
+      aria-label={t("lang.switch")}
+      onChange={(e) => setLocale(e.target.value as Locale)}
+    >
+      {LOCALES.map((l) => (
+        <option key={l} value={l}>
+          {LOCALE_LABELS[l]}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 export function Nav() {
   const path = usePathname();
+  const { t } = useI18n();
   const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
@@ -23,10 +43,10 @@ export function Nav() {
       </Link>
       <div className="spacer" />
       <Link href="/" className={path === "/" ? "active" : ""}>
-        Create
+        {t("nav.create")}
       </Link>
       <Link href="/dashboard" className={path === "/dashboard" ? "active" : ""}>
-        Dashboard
+        {t("nav.dashboard")}
       </Link>
       {session ? (
         <>
@@ -38,14 +58,15 @@ export function Nav() {
               clearSession();
             }}
           >
-            Sign out
+            {t("nav.signout")}
           </a>
         </>
       ) : (
         <Link href="/login" className={path === "/login" ? "active" : ""}>
-          Sign in
+          {t("nav.signin")}
         </Link>
       )}
+      <LangSwitcher />
     </nav>
   );
 }

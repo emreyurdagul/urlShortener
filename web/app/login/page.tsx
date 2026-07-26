@@ -3,10 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, ApiError, saveSession } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 
 type AuthResponse = { token: string; plan: string };
 
 export default function LoginPage() {
+  const { t } = useI18n();
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -26,9 +28,9 @@ export default function LoginPage() {
       saveSession({ token: res.token, plan: res.plan, email });
       router.push("/dashboard");
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) setError("Wrong email or password.");
-      else if (err instanceof ApiError && err.status === 409) setError("That email is already registered.");
-      else setError(err instanceof ApiError ? err.message : "Something went wrong");
+      if (err instanceof ApiError && err.status === 401) setError(t("auth.errWrong"));
+      else if (err instanceof ApiError && err.status === 409) setError(t("auth.errExists"));
+      else setError(err instanceof ApiError ? err.message : t("common.error"));
     } finally {
       setBusy(false);
     }
@@ -37,27 +39,27 @@ export default function LoginPage() {
   return (
     <div style={{ maxWidth: 400, margin: "0 auto" }}>
       <div className="hero" style={{ textAlign: "center" }}>
-        <h1>{mode === "login" ? "Welcome back" : "Create an account"}</h1>
-        <p>Own your links, track clicks, unlock premium.</p>
+        <h1>{mode === "login" ? t("auth.welcomeBack") : t("auth.createAccount")}</h1>
+        <p>{t("auth.subtitle")}</p>
       </div>
 
       <div className="card">
         <div className="tabs">
           <button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")} type="button">
-            Sign in
+            {t("auth.signin")}
           </button>
           <button className={mode === "register" ? "active" : ""} onClick={() => setMode("register")} type="button">
-            Register
+            {t("auth.register")}
           </button>
         </div>
 
         <form onSubmit={submit}>
           <div className="field">
-            <label>Email</label>
+            <label>{t("auth.email")}</label>
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div className="field">
-            <label>Password</label>
+            <label>{t("auth.password")}</label>
             <input
               type="password"
               required
@@ -65,10 +67,10 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-            {mode === "register" && <div className="hint">At least 8 characters.</div>}
+            {mode === "register" && <div className="hint">{t("auth.passwordHint")}</div>}
           </div>
           <button type="submit" disabled={busy} style={{ width: "100%" }}>
-            {busy ? "…" : mode === "login" ? "Sign in" : "Create account"}
+            {busy ? "…" : mode === "login" ? t("auth.signin") : t("auth.createBtn")}
           </button>
           {error && <div className="error">{error}</div>}
         </form>
