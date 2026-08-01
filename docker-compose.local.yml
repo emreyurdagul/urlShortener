@@ -16,8 +16,8 @@ services:
     environment:
       GATEWAY_CONFIG: /app/gateway.json
       JWT_SECRET: ${JWT_SECRET:-dev-only-shared-secret-change-me-32bytes}
-      RATE_LIMIT_BURST: 60
-      RATE_LIMIT_PER_SECOND: 30
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-60}
+      RATE_LIMIT_PER_SECOND: ${RATE_LIMIT_PER_SECOND:-30}
     volumes:
       - ./gateway.json:/app/gateway.json:ro,z
     depends_on:

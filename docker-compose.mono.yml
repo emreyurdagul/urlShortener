@@ -1,0 +1,46 @@
+# Local monolith stack — the single-process counterpart of the microservice
+# build, for an apples-to-apples load-test comparison on the same hardware.
+#
+#   podman-compose -f docker-compose.mono.yml up --build
+#
+# Runs one app (all three services merged) + its own Postgres. Publishes host
+# port 8090 (the microservice gateway uses 8080), so the two stacks can each be
+# brought up one at a time without a port clash. Its own pgdata volume keeps the
+# two databases isolated so neither test contends on the other's DB.
+name: urlshortener-mono
+
+services:
+  monolith:
+    build:
+      context: .
+      dockerfile: src/Monolith/Dockerfile
+    ports:
+      - "8090:8080"
+    environment:
+      ConnectionStrings__Db: Host=postgres;Username=shortener;Password=shortener;Database=shortener
+      LINK_DOMAINS: localhost:8090
+      JWT_SECRET: ${JWT_SECRET:-dev-only-shared-secret-change-me-32bytes}
+      # Env-overridable so a throughput load test can raise the ceiling and
+      # measure architecture rather than the limiter (see src/Monolith/README.md).
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-60}
+      RATE_LIMIT_PER_SECOND: ${RATE_LIMIT_PER_SECOND:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: shortener
+      POSTGRES_PASSWORD: shortener
+      POSTGRES_DB: shortener
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shortener -d shortener"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - pgdata_mono:/var/lib/postgresql/data
+
+volumes:
+  pgdata_mono:

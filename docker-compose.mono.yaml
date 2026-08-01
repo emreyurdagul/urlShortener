@@ -1,0 +1,60 @@
+# Production monolith stack for Coolify — the single-process counterpart of the
+# microservice build, deployed as its OWN Coolify application at
+# mono-kisalt.etkinlikgalerim.online with its own Postgres (isolated data, so the
+# micro vs. mono comparison stays clean).
+#
+# In Coolify set this app's "Docker Compose Location" = /docker-compose.mono.yaml.
+# Secrets (JWT_SECRET, POSTGRES_PASSWORD) come from Coolify env. Public routing is
+# by explicit Traefik labels + the external `coolify` network; TLS is Traefik's
+# self-signed cert with Cloudflare in front in "Full" SSL mode.
+#
+# Local dev uses docker-compose.mono.yml (host ports, no Traefik).
+name: urlshortener-mono
+
+services:
+  monolith:
+    build:
+      context: .
+      dockerfile: src/Monolith/Dockerfile
+    environment:
+      ConnectionStrings__Db: 'Host=postgres;Username=shortener;Password=${POSTGRES_PASSWORD:-shortener};Database=shortener'
+      LINK_DOMAINS: '${LINK_DOMAINS:-mono-kisalt.etkinlikgalerim.online}'
+      JWT_SECRET: '${JWT_SECRET:?set JWT_SECRET in Coolify}'
+      RATE_LIMIT_BURST: 60
+      RATE_LIMIT_PER_SECOND: 30
+    expose:
+      - '8080'
+    networks:
+      - default
+      - coolify
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=coolify
+      - traefik.http.routers.urlshort-mono.rule=Host(`mono-kisalt.etkinlikgalerim.online`)
+      - traefik.http.routers.urlshort-mono.entrypoints=https
+      - traefik.http.routers.urlshort-mono.tls=true
+      - traefik.http.services.urlshort-mono.loadbalancer.server.port=8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: 'postgres:17-alpine'
+    environment:
+      POSTGRES_USER: shortener
+      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:-shortener}'
+      POSTGRES_DB: shortener
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shortener -d shortener"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - 'pgdata:/var/lib/postgresql/data'
+
+volumes:
+  pgdata:
+
+networks:
+  coolify:
+    external: true
