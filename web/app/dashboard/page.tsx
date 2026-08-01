@@ -179,22 +179,22 @@ export default function DashboardPage() {
                 const s = stats[l.code];
                 return (
                   <tr key={l.code}>
-                    <td>
+                    <td data-label={t("dash.colQr")}>
                       <img src={l.qrUrl} alt="QR" />
                     </td>
-                    <td className="code">
+                    <td className="code" data-label={t("dash.colShort")}>
                       <a href={l.shortUrl} target="_blank" rel="noreferrer">
                         {l.domain}/{l.code}
                       </a>
                     </td>
-                    <td className="tgt">{l.targetUrl}</td>
-                    <td className="clicks">
+                    <td className="tgt" data-label={t("dash.colDest")}>{l.targetUrl}</td>
+                    <td className="clicks" data-label={t("dash.colClicks")}>
                       <span className="clicks-n">{s ? s.total : "·"}</span>
                       {s?.lastClick && (
                         <span className="clicks-last">{new Date(s.lastClick).toLocaleDateString()}</span>
                       )}
                     </td>
-                    <td className="tgt">{new Date(l.createdAt).toLocaleDateString()}</td>
+                    <td className="tgt" data-label={t("dash.colCreated")}>{new Date(l.createdAt).toLocaleDateString()}</td>
                   </tr>
                 );
               })}
