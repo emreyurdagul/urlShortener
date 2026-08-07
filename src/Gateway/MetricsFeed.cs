@@ -53,20 +53,34 @@ public sealed class MetricsFeed(IHttpClientFactory httpFactory, IConfiguration c
         var requestRate = await ScalarAsync(client, "sum(rate(gateway_requests_total[1m]))", ct);
         var errorRate = await ScalarAsync(client, "sum(rate(gateway_requests_total{code=~\"5..\"}[1m]))", ct);
         var rateLimited = await ScalarAsync(client, "rate(gateway_rate_limited_total[1m])", ct);
-        var p50 = await ScalarAsync(client, Quantile(0.50), ct);
-        var p95 = await ScalarAsync(client, Quantile(0.95), ct);
-        var p99 = await ScalarAsync(client, Quantile(0.99), ct);
+        // Cumulative counter — a real, non-zero number even when the live rate is
+        // zero, so an idle dashboard still shows something true rather than reading
+        // as dead.
+        var totalRequests = await ScalarAsync(client, "sum(gateway_requests_total)", ct);
         var backends = await BackendHealthAsync(client, ct);
+
+        // Latency percentiles are only meaningful with recent traffic. Over an
+        // empty 1m window histogram_quantile returns bucket-boundary artifacts
+        // (e.g. a frozen "p95 = 242ms" while nothing is happening) — which reads as
+        // fake. Report null when idle and let the UI show "—".
+        double? p50Ms = null, p95Ms = null, p99Ms = null;
+        if (requestRate > 0)
+        {
+            p50Ms = await ScalarAsync(client, Quantile(0.50), ct) * 1000;
+            p95Ms = await ScalarAsync(client, Quantile(0.95), ct) * 1000;
+            p99Ms = await ScalarAsync(client, Quantile(0.99), ct) * 1000;
+        }
 
         return new
         {
             ts = DateTimeOffset.UtcNow,
             requestRate,
+            totalRequests,
             errorRatio = requestRate > 0 ? errorRate / requestRate : 0,
             rateLimitedRate = rateLimited,
-            p50Ms = p50 * 1000,
-            p95Ms = p95 * 1000,
-            p99Ms = p99 * 1000,
+            p50Ms,
+            p95Ms,
+            p99Ms,
             backends,
         };
     }

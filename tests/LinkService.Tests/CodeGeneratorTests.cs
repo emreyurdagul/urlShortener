@@ -5,6 +5,10 @@ namespace LinkService.Tests;
 public class CodeGeneratorTests
 {
     [Theory]
+    [InlineData(1)] // Pro tier
+    [InlineData(2)] // Pro tier
+    [InlineData(3)] // Plus tier
+    [InlineData(4)] // Plus tier
     [InlineData(5)]
     [InlineData(6)]
     [InlineData(7)]
@@ -29,10 +33,24 @@ public class CodeGeneratorTests
     }
 
     [Theory]
-    [InlineData(4)]
+    [InlineData(0)]
     [InlineData(9)]
     public void Rejects_out_of_range_lengths(int length)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => CodeGenerator.Generate(length));
+    }
+
+    [Theory]
+    [InlineData("my-link", true)]
+    [InlineData("brand_2026", true)]
+    [InlineData("a", true)]
+    [InlineData("has space", false)]
+    [InlineData("api", false)]      // reserved (collides with a literal route)
+    [InlineData("health", false)]   // reserved
+    [InlineData("", false)]
+    [InlineData("way-too-long-vanity-code-exceeding-limit", false)] // > 32 chars
+    public void Validates_vanity_codes(string code, bool valid)
+    {
+        Assert.Equal(valid, CodeGenerator.IsValidVanity(code));
     }
 }

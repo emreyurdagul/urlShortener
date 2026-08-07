@@ -18,11 +18,14 @@ type Stats = { total: number; lastClick: string | null };
 
 type Snapshot = {
   requestRate: number;
+  totalRequests: number;
   errorRatio: number;
   rateLimitedRate: number;
-  p50Ms: number;
-  p95Ms: number;
-  p99Ms: number;
+  // null when there's no recent traffic — latency is meaningless then, so the
+  // UI shows "—" instead of a frozen histogram artifact.
+  p50Ms: number | null;
+  p95Ms: number | null;
+  p99Ms: number | null;
   backends: { backend: string; healthy: boolean }[];
 };
 
@@ -122,16 +125,17 @@ export default function DashboardPage() {
             <div className="k">{t("dash.reqPerSec")}</div>
             <div className="v">{snap ? snap.requestRate.toFixed(1) : "—"}</div>
             <Sparkline values={history.current} />
+            <div className="hint">{t("dash.total", { n: snap ? snap.totalRequests.toLocaleString() : "—" })}</div>
           </div>
           <div className="stat">
             <div className="k">{t("dash.latencyP95")}</div>
             <div className="v">
-              {snap ? snap.p95Ms.toFixed(1) : "—"} <small>ms</small>
+              {snap?.p95Ms != null ? snap.p95Ms.toFixed(1) : "—"} <small>ms</small>
             </div>
             <div className="hint">
               {t("dash.percentiles", {
-                p50: snap ? snap.p50Ms.toFixed(1) : "—",
-                p99: snap ? snap.p99Ms.toFixed(1) : "—",
+                p50: snap?.p50Ms != null ? snap.p50Ms.toFixed(1) : "—",
+                p99: snap?.p99Ms != null ? snap.p99Ms.toFixed(1) : "—",
               })}
             </div>
           </div>

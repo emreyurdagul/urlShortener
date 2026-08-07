@@ -210,7 +210,54 @@ button.ghost:hover { background: var(--ground-2); color: var(--amber-bright); bo
 .badge::before { content: "["; margin-right: 2px; color: var(--faint); }
 .badge::after { content: "]"; margin-left: 2px; color: var(--faint); }
 .badge.free { color: var(--dim); }
+.badge.plus { color: var(--amber-bright); border-color: var(--line-bright); }
+.badge.pro,
 .badge.premium { color: var(--amber-bright); border-color: var(--line-bright); text-shadow: 0 0 8px var(--glow); }
+
+/* ── Upgrade: tier cards ─────────────────────────────────────── */
+.demo-banner {
+  display: inline-block; margin: 0 0 22px;
+  padding: 6px 12px; border: 1px dashed var(--line-bright);
+  color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+}
+.demo-banner::before { content: "⚠ "; color: var(--amber); }
+
+.tiers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.tier {
+  border: 1px solid var(--line); padding: 22px 20px;
+  display: flex; flex-direction: column;
+}
+.tier.current { border-color: var(--line-bright); box-shadow: 0 0 0 1px var(--line-bright) inset; }
+.tier-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.tier-name {
+  font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--amber-bright);
+}
+.tier-cur {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim);
+  border: 1px solid var(--line); padding: 1px 5px; flex: none;
+}
+.tier-price {
+  margin: 14px 0 4px; font-size: 1.7rem; font-weight: 700; line-height: 1;
+  color: var(--amber-bright); text-shadow: 0 0 10px var(--glow);
+}
+.tier-price small { font-size: 0.8rem; color: var(--dim); font-weight: 500; margin-left: 3px; text-shadow: none; }
+.feats { list-style: none; padding: 0; margin: 18px 0 22px; flex: 1; }
+.feats li { padding: 6px 0; font-size: 12.5px; color: var(--amber); border-bottom: 1px solid var(--line); }
+.feats li:last-child { border-bottom: none; }
+.feats li::before { content: "+ "; color: var(--amber-bright); font-weight: 700; }
+.tier button { width: 100%; }
+.tier-foot {
+  text-align: center; font-size: 11px; color: var(--dim);
+  text-transform: uppercase; letter-spacing: 1px; padding: 10px 0; min-height: 20px;
+}
+
+.notice {
+  margin-top: 20px; padding: 12px 14px;
+  border: 1px solid var(--line-bright); background: var(--ground-2);
+  color: var(--amber-bright); font-size: 13px; text-shadow: 0 0 8px var(--glow);
+}
+.notice::before { content: "✓ "; color: var(--amber); font-weight: 700; }
 
 /* ── Links table ─────────────────────────────────────────────── */
 .links-table { width: 100%; border-collapse: collapse; }
@@ -332,6 +379,7 @@ button.ghost:hover { background: var(--ground-2); color: var(--amber-bright); bo
 [dir="rtl"] .links-table th,
 [dir="rtl"] .links-table td { text-align: right; }
 [dir="rtl"] .result .short a::before { content: "↰ "; }
+[dir="rtl"] .tier-price { direction: ltr; text-align: right; }
 
 /* ── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 640px) {
@@ -354,6 +402,7 @@ button.ghost:hover { background: var(--ground-2); color: var(--amber-bright); bo
   .metrics-grid { grid-template-columns: repeat(2, 1fr); }
   .stat:nth-child(3) { border-left: none; }
   .stat:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .tiers { grid-template-columns: 1fr; }
   .row { flex-direction: column; gap: 0; }
   .result { flex-direction: column; align-items: flex-start; }
 

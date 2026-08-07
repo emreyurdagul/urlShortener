@@ -1,22 +1,43 @@
 namespace Monolith;
 
 /// <summary>
-/// Plan tiers and the quota each unlocks. In the microservice build this logic
-/// was DUPLICATED across two services (auth-service owned the tiers, link-service
-/// re-declared the quota) precisely because they were independently deployable.
-/// In one process there is a single source of truth.
+/// Plan tiers and the capabilities each unlocks. In the microservice build this
+/// logic lived in TWO places (auth-service owned the tier names, link-service the
+/// quota/code rules) because they were independently deployable; in one process
+/// there is a single source of truth.
+///
+///   tier   shortest code   links        vanity
+///   free   5               50           no
+///   plus   3               unlimited    no
+///   pro    1               unlimited    yes
 /// </summary>
 public static class Plans
 {
     public const string Free = "free";
-    public const string Premium = "premium";
+    public const string Plus = "plus";
+    public const string Pro = "pro";
 
-    public static bool IsValid(string plan) => plan is Free or Premium;
+    public static bool IsValid(string plan) => plan is Free or Plus or Pro;
 
-    /// <summary>Max links a user may own. null means unlimited.</summary>
-    public static int? LinkQuota(string plan) => plan switch
+    /// <summary>Maps legacy/unknown values onto a current tier (old "premium" == pro).</summary>
+    public static string Normalize(string? plan) => plan switch
     {
-        Premium => null,
-        _ => 50,
+        Free or Plus or Pro => plan!,
+        "premium" => Pro,
+        _ => Free,
     };
+
+    /// <summary>Max links a user may own. null = unlimited.</summary>
+    public static int? LinkQuota(string plan) => Normalize(plan) == Free ? 50 : null;
+
+    /// <summary>Shortest random code length this tier may request.</summary>
+    public static int MinCodeLength(string plan) => Normalize(plan) switch
+    {
+        Pro => 1,
+        Plus => 3,
+        _ => 5,
+    };
+
+    /// <summary>Whether this tier may choose its own (vanity) code.</summary>
+    public static bool AllowsVanity(string plan) => Normalize(plan) == Pro;
 }

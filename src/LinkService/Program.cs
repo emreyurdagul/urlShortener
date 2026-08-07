@@ -88,22 +88,17 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
         target.Scheme is not ("http" or "https"))
         return Results.BadRequest(new { error = "url must be an absolute http(s) URL." });
 
-    var codeLength = req.CodeLength ?? 7;
-    if (codeLength is < CodeGenerator.MinLength or > CodeGenerator.MaxLength)
-        return Results.BadRequest(new
-        {
-            error = $"codeLength must be between {CodeGenerator.MinLength} and {CodeGenerator.MaxLength}.",
-        });
-
     var domain = (req.Domain ?? domains.Default).ToLowerInvariant();
     if (!domains.Contains(domain))
         return Results.BadRequest(new { error = $"domain '{domain}' is not served here." });
 
     // The gateway authenticates the caller and passes trusted identity headers;
-    // their absence means an anonymous request, which cannot own links.
+    // their absence means an anonymous request (free tier, cannot own links).
     long? ownerId = long.TryParse(http.Headers[IdentityHeaders.UserId].FirstOrDefault(), out var uid) ? uid : null;
-    var plan = http.Headers[IdentityHeaders.UserPlan].FirstOrDefault() ?? "free";
+    var plan = Plans.Normalize(http.Headers[IdentityHeaders.UserPlan].FirstOrDefault());
+    var scheme = http.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? http.Scheme;
 
+    // Plan quota applies to owned links (random or vanity alike).
     if (ownerId is { } owner)
     {
         var quota = Plans.LinkQuota(plan);
@@ -122,6 +117,45 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
         }
     }
 
+    // Vanity code (Pro): the caller chose the code, so a collision is a hard 409
+    // — it isn't ours to change — rather than a retry.
+    if (!string.IsNullOrWhiteSpace(req.Code))
+    {
+        if (!Plans.AllowsVanity(plan))
+            return Results.Json(new { error = "Custom codes are a Pro feature." },
+                statusCode: StatusCodes.Status403Forbidden);
+        if (!CodeGenerator.IsValidVanity(req.Code))
+            return Results.BadRequest(new { error = "Custom code must be 1-32 chars of letters, digits, '-' or '_'." });
+
+        try
+        {
+            await using var conn = await db.OpenConnectionAsync();
+            await conn.ExecuteAsync(
+                "INSERT INTO links (domain, code, target_url, owner_id) VALUES (@domain, @code, @targetUrl, @ownerId)",
+                new { domain, code = req.Code, targetUrl = target.AbsoluteUri, ownerId });
+            linksCreated.WithLabels(domain).Inc();
+            return Results.Created($"/api/links/{req.Code}",
+                new { code = req.Code, domain, shortUrl = $"{scheme}://{domain}/{req.Code}" });
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            return Results.Conflict(new { error = $"'{req.Code}' is already taken." });
+        }
+    }
+
+    // Random code: the requested length must be within the caller's tier.
+    var codeLength = req.CodeLength ?? 7;
+    if (codeLength is < CodeGenerator.MinLength or > CodeGenerator.MaxLength)
+        return Results.BadRequest(new
+        {
+            error = $"codeLength must be between {CodeGenerator.MinLength} and {CodeGenerator.MaxLength}.",
+        });
+    var minLength = Plans.MinCodeLength(plan);
+    if (codeLength < minLength)
+        return Results.Json(
+            new { error = $"{codeLength}-char codes need a higher plan; '{plan}' starts at {minLength}.", minLength },
+            statusCode: StatusCodes.Status403Forbidden);
+
     for (var attempt = 0; attempt < 5; attempt++)
     {
         var code = CodeGenerator.Generate(codeLength);
@@ -133,7 +167,6 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
                 new { domain, code, targetUrl = target.AbsoluteUri, ownerId });
 
             linksCreated.WithLabels(domain).Inc();
-            var scheme = http.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? http.Scheme;
             return Results.Created($"/api/links/{code}", new
             {
                 code,
@@ -183,7 +216,7 @@ app.MapGet("/{code}", async (string code, NpgsqlDataSource db, LinkCache cache, 
 
 app.Run();
 
-public sealed record CreateLinkRequest(string Url, string? Domain, int? CodeLength);
+public sealed record CreateLinkRequest(string Url, string? Domain, int? CodeLength, string? Code);
 
 public sealed record LinkRow(string Domain, string Code, string TargetUrl, DateTime CreatedAt);
 

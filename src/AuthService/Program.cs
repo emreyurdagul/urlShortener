@@ -80,22 +80,36 @@ app.MapPost("/api/auth/login", async (
     return Results.Ok(new { token, expiresAt, plan = user.Plan });
 });
 
-// Phase-6 payment flow will drive this; for now it lets the tier machinery
-// be exercised end-to-end.
-app.MapPost("/api/auth/plan", async (SetPlanRequest req, NpgsqlDataSource db) =>
+// Self-serve tier upgrade. Unlike the old admin-ish /api/auth/plan (which let
+// ANYONE upgrade ANYONE for free), this upgrades the AUTHENTICATED caller: the
+// gateway validates the bearer token and passes a trusted X-User-Id. Payment is
+// simulated — no charge — but the flow is real: the DB is updated and a FRESH
+// token carrying the new plan is returned (JWTs are stateless, so the old token
+// would keep reading as the old plan until it is replaced).
+app.MapPost("/api/auth/upgrade", async (UpgradeRequest req, NpgsqlDataSource db, TokenService tokens, HttpRequest http) =>
 {
-    if (!Plans.IsValid(req.Plan))
-        return Results.BadRequest(new { error = "Unknown plan." });
+    if (!long.TryParse(http.Headers["X-User-Id"].FirstOrDefault(), out var userId))
+        return Results.Unauthorized();
+
+    var plan = Plans.Normalize(req.Plan);
+    if (!Plans.IsValid(plan) || plan == Plans.Free)
+        return Results.BadRequest(new { error = "Choose a paid tier: 'plus' or 'pro'." });
 
     await using var conn = await db.OpenConnectionAsync();
-    var updated = await conn.ExecuteAsync(
-        "UPDATE users SET plan = @plan WHERE id = @id",
-        new { plan = req.Plan, id = req.UserId });
+    var user = await conn.QueryFirstOrDefaultAsync<UserRow>(
+        """
+        UPDATE users SET plan = @plan WHERE id = @id
+        RETURNING id AS Id, email AS Email, password_hash AS PasswordHash, plan AS Plan
+        """,
+        new { plan, id = userId });
+    if (user is null)
+        return Results.NotFound();
 
-    return updated == 0 ? Results.NotFound() : Results.Ok(new { req.UserId, req.Plan });
+    var (token, expiresAt) = tokens.Issue(user.Id, user.Email, user.Plan, DateTime.UtcNow);
+    return Results.Ok(new { token, expiresAt, plan = user.Plan });
 });
 
 app.Run();
 
 public sealed record Credentials(string Email, string Password);
-public sealed record SetPlanRequest(long UserId, string Plan);
+public sealed record UpgradeRequest(string Plan);

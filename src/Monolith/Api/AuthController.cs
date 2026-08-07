@@ -33,16 +33,22 @@ public sealed class AuthController(AuthAppService auth) : ControllerBase
             : Ok(new { token = result.Token, expiresAt = result.ExpiresAt, plan = result.Plan });
     }
 
-    // Phase-6 payment flow will drive this; for now it lets the tier machinery
-    // be exercised end-to-end.
-    [HttpPost("plan")]
-    public async Task<IActionResult> SetPlan(SetPlanRequest req)
+    // Self-serve tier upgrade for the AUTHENTICATED caller (identity comes from
+    // AuthMiddleware, not a client-supplied user id — so a user can only upgrade
+    // themselves). Payment is simulated; the DB + fresh-token flow is real.
+    [HttpPost("upgrade")]
+    public async Task<IActionResult> Upgrade(UpgradeRequest req)
     {
-        if (!Plans.IsValid(req.Plan))
-            return BadRequest(new { error = "Unknown plan." });
+        if (HttpContext.Items[AuthMiddleware.ItemKey] is not UserIdentity user)
+            return Unauthorized();
 
-        return await auth.SetPlanAsync(req.UserId, req.Plan)
-            ? Ok(new { req.UserId, req.Plan })
-            : NotFound();
+        var plan = Plans.Normalize(req.Plan);
+        if (!Plans.IsValid(plan) || plan == Plans.Free)
+            return BadRequest(new { error = "Choose a paid tier: 'plus' or 'pro'." });
+
+        var result = await auth.UpgradeAsync(user.UserId, plan);
+        return result is null
+            ? NotFound()
+            : Ok(new { token = result.Token, expiresAt = result.ExpiresAt, plan = result.Plan });
     }
 }

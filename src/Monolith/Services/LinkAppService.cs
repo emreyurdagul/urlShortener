@@ -31,20 +31,17 @@ public sealed class LinkAppService(
             target.Scheme is not ("http" or "https"))
             return new CreateResult(false, "url must be an absolute http(s) URL.", 400, null, null);
 
-        var codeLength = req.CodeLength ?? 7;
-        if (codeLength is < CodeGenerator.MinLength or > CodeGenerator.MaxLength)
-            return new CreateResult(false,
-                $"codeLength must be between {CodeGenerator.MinLength} and {CodeGenerator.MaxLength}.", 400, null, null);
-
         var domain = (req.Domain ?? domains.Default).ToLowerInvariant();
         if (!domains.Contains(domain))
             return new CreateResult(false, $"domain '{domain}' is not served here.", 400, null, null);
 
-        // An anonymous request (no authenticated owner) cannot own links, so it
-        // skips the quota check and stores a null owner_id.
+        var plan = Plans.Normalize(owner?.Plan);
+
+        // Plan quota applies to owned links (random or vanity alike). An anonymous
+        // request (no owner) skips it and stores a null owner_id.
         if (owner is { } o)
         {
-            var quota = Plans.LinkQuota(o.Plan);
+            var quota = Plans.LinkQuota(plan);
             if (quota is { } limit)
             {
                 var owned = await links.CountByOwnerAsync(o.UserId);
@@ -52,10 +49,41 @@ public sealed class LinkAppService(
                 {
                     QuotaRejected.Inc();
                     return new CreateResult(false,
-                        $"Plan '{o.Plan}' allows {limit} links; upgrade for more.", 403, null, null);
+                        $"Plan '{plan}' allows {limit} links; upgrade for more.", 403, null, null);
                 }
             }
         }
+
+        // Vanity code (Pro): caller-chosen, so a collision is a hard 409 rather
+        // than a retry.
+        if (!string.IsNullOrWhiteSpace(req.Code))
+        {
+            if (!Plans.AllowsVanity(plan))
+                return new CreateResult(false, "Custom codes are a Pro feature.", 403, null, null);
+            if (!CodeGenerator.IsValidVanity(req.Code))
+                return new CreateResult(false, "Custom code must be 1-32 chars of letters, digits, '-' or '_'.", 400, null, null);
+
+            try
+            {
+                await links.InsertAsync(domain, req.Code, target.AbsoluteUri, owner?.UserId);
+                Created.WithLabels(domain).Inc();
+                return new CreateResult(true, null, 201, req.Code, domain);
+            }
+            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+            {
+                return new CreateResult(false, $"'{req.Code}' is already taken.", 409, null, null);
+            }
+        }
+
+        // Random code: the requested length must be within the caller's tier.
+        var codeLength = req.CodeLength ?? 7;
+        if (codeLength is < CodeGenerator.MinLength or > CodeGenerator.MaxLength)
+            return new CreateResult(false,
+                $"codeLength must be between {CodeGenerator.MinLength} and {CodeGenerator.MaxLength}.", 400, null, null);
+        var minLength = Plans.MinCodeLength(plan);
+        if (codeLength < minLength)
+            return new CreateResult(false,
+                $"{codeLength}-char codes need a higher plan; '{plan}' starts at {minLength}.", 403, null, null);
 
         for (var attempt = 0; attempt < 5; attempt++)
         {

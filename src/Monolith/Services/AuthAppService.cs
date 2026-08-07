@@ -71,6 +71,19 @@ public sealed class AuthAppService
         return new AuthResult(token, expiresAt, user.Plan);
     }
 
-    public async Task<bool> SetPlanAsync(long userId, string plan) =>
-        await _users.UpdatePlanAsync(userId, plan) > 0;
+    /// <summary>
+    /// Upgrades an authenticated user's tier and returns a FRESH token carrying
+    /// the new plan (JWTs are stateless, so the old token would keep reading as
+    /// the old plan). Returns null if the user no longer exists. Payment is
+    /// simulated — no charge — but the DB + token flow is real.
+    /// </summary>
+    public async Task<AuthResult?> UpgradeAsync(long userId, string plan)
+    {
+        var user = await _users.UpdatePlanReturningAsync(userId, Plans.Normalize(plan));
+        if (user is null)
+            return null;
+
+        var (token, expiresAt) = _jwt.Issue(user.Id, user.Email, user.Plan, DateTime.UtcNow);
+        return new AuthResult(token, expiresAt, user.Plan);
+    }
 }

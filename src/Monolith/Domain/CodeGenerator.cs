@@ -1,12 +1,14 @@
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 
 namespace Monolith;
 
-public static class CodeGenerator
+public static partial class CodeGenerator
 {
-    // 4-character codes are reserved for the premium tier; the public range
-    // starts at 5. (Unchanged from the microservice build.)
-    public const int MinLength = 5;
+    // Absolute floor/ceiling for RANDOM codes; per-tier minimums
+    // (Plans.MinCodeLength) gate what a given caller may actually request. 1-2
+    // char codes are the Pro tier's scarcity perk.
+    public const int MinLength = 1;
     public const int MaxLength = 8;
 
     public const string Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -17,4 +19,19 @@ public static class CodeGenerator
         ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxLength);
         return RandomNumberGenerator.GetString(Alphabet, length);
     }
+
+    // Vanity (Pro) codes are caller-chosen, so a wider, URL-safe charset than
+    // generated codes, but still bounded. Words that would collide with the app's
+    // own literal routes are rejected.
+    private static readonly HashSet<string> Reserved =
+        new(StringComparer.OrdinalIgnoreCase) { "health", "metrics", "api" };
+
+    public static bool IsValidVanity(string code) =>
+        !string.IsNullOrEmpty(code) &&
+        code.Length <= 32 &&
+        !Reserved.Contains(code) &&
+        VanityPattern().IsMatch(code);
+
+    [GeneratedRegex("^[A-Za-z0-9_-]+$")]
+    private static partial Regex VanityPattern();
 }

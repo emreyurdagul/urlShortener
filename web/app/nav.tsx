@@ -6,6 +6,13 @@ import { useEffect, useState } from "react";
 import { clearSession, getSession, type Session } from "@/lib/api";
 import { LOCALES, LOCALE_LABELS, useI18n, type Locale } from "@/lib/i18n";
 
+// Legacy "premium" tokens read as the top tier.
+function normPlan(plan: string): "free" | "plus" | "pro" {
+  if (plan === "plus" || plan === "pro") return plan;
+  if (plan === "premium") return "pro";
+  return "free";
+}
+
 function LangSwitcher() {
   const { locale, setLocale, t } = useI18n();
   return (
@@ -50,7 +57,12 @@ export function Nav() {
       </Link>
       {session ? (
         <>
-          <span className={`badge ${session.plan}`}>{session.plan}</span>
+          {normPlan(session.plan) !== "pro" && (
+            <Link href="/upgrade" className={path === "/upgrade" ? "active" : ""}>
+              {t("nav.upgrade")}
+            </Link>
+          )}
+          <span className={`badge ${normPlan(session.plan)}`}>{normPlan(session.plan)}</span>
           <a
             href="#"
             onClick={(e) => {

@@ -1,20 +1,27 @@
 namespace AuthService;
 
 /// <summary>
-/// The plan tiers. Kept deliberately tiny — payment and upgrades arrive in
-/// build phase 6; here a plan only decides quota and which features unlock.
+/// Plan tiers: a free tier plus two paid tiers (Plus, Pro). The tier decides the
+/// link quota, the shortest code length unlocked, and whether vanity codes are
+/// allowed — all of which link-service enforces from the trusted plan header.
+/// Here auth-service only needs to validate and normalize tier names.
+///
+/// Payment for the paid tiers is simulated (see /api/auth/upgrade) — the upgrade
+/// flow is real (DB + fresh token) but no money changes hands.
 /// </summary>
 public static class Plans
 {
     public const string Free = "free";
-    public const string Premium = "premium";
+    public const string Plus = "plus";
+    public const string Pro = "pro";
 
-    public static bool IsValid(string plan) => plan is Free or Premium;
+    public static bool IsValid(string plan) => plan is Free or Plus or Pro;
 
-    /// <summary>Max links a user may own. null means unlimited.</summary>
-    public static int? LinkQuota(string plan) => plan switch
+    /// <summary>Maps legacy/unknown values onto a current tier (old "premium" == pro).</summary>
+    public static string Normalize(string? plan) => plan switch
     {
-        Premium => null,
-        _ => 50,
+        Free or Plus or Pro => plan!,
+        "premium" => Pro,
+        _ => Free,
     };
 }

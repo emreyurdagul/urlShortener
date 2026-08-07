@@ -23,10 +23,15 @@ public sealed class UserRepository(NpgsqlDataSource db)
             new { email, hash = passwordHash });
     }
 
-    public async Task<int> UpdatePlanAsync(long id, string plan)
+    /// <summary>Updates the plan and returns the updated row (null if no such user).</summary>
+    public async Task<UserRow?> UpdatePlanReturningAsync(long id, string plan)
     {
         await using var conn = await db.OpenConnectionAsync();
-        return await conn.ExecuteAsync(
-            "UPDATE users SET plan = @plan WHERE id = @id", new { plan, id });
+        return await conn.QueryFirstOrDefaultAsync<UserRow>(
+            """
+            UPDATE users SET plan = @plan WHERE id = @id
+            RETURNING id AS Id, email AS Email, password_hash AS PasswordHash, plan AS Plan
+            """,
+            new { plan, id });
     }
 }
