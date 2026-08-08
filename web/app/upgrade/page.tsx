@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, ApiError, getSession, saveSession, type Session } from "@/lib/api";
+import { api, getSession, saveSession, type Session } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
 type TierId = "free" | "plus" | "pro";
@@ -21,7 +21,7 @@ function normPlan(plan: string | undefined): TierId {
 }
 
 export default function UpgradePage() {
-  const { t } = useI18n();
+  const { t, tErr } = useI18n();
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState<TierId | null>(null);
@@ -50,7 +50,7 @@ export default function UpgradePage() {
       saveSession({ token: res.token, plan: res.plan, email: session?.email ?? "" });
       setDone(t("upgrade.success", { plan: t(`tier.${normPlan(res.plan)}.name`) }));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("common.error"));
+      setError(tErr(err));
     } finally {
       setBusy(null);
     }

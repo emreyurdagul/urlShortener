@@ -2,13 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { api, ApiError, saveSession } from "@/lib/api";
+import { api, saveSession } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
 type AuthResponse = { token: string; plan: string };
 
 export default function LoginPage() {
-  const { t } = useI18n();
+  const { t, tErr } = useI18n();
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -28,9 +28,7 @@ export default function LoginPage() {
       saveSession({ token: res.token, plan: res.plan, email });
       router.push("/dashboard");
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) setError(t("auth.errWrong"));
-      else if (err instanceof ApiError && err.status === 409) setError(t("auth.errExists"));
-      else setError(err instanceof ApiError ? err.message : t("common.error"));
+      setError(tErr(err));
     } finally {
       setBusy(false);
     }

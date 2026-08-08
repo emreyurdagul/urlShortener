@@ -86,11 +86,11 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
 {
     if (!Uri.TryCreate(req.Url, UriKind.Absolute, out var target) ||
         target.Scheme is not ("http" or "https"))
-        return Results.BadRequest(new { error = "url must be an absolute http(s) URL." });
+        return Results.BadRequest(new { code = "url_invalid", error = "URL must be an absolute http(s) URL." });
 
     var domain = (req.Domain ?? domains.Default).ToLowerInvariant();
     if (!domains.Contains(domain))
-        return Results.BadRequest(new { error = $"domain '{domain}' is not served here." });
+        return Results.BadRequest(new { code = "domain_invalid", error = $"Domain '{domain}' is not served here.", domain });
 
     // The gateway authenticates the caller and passes trusted identity headers;
     // their absence means an anonymous request (free tier, cannot own links).
@@ -111,7 +111,7 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
             {
                 quotaRejected.Inc();
                 return Results.Json(
-                    new { error = $"Plan '{plan}' allows {limit} links; upgrade for more.", quota = limit, used = owned },
+                    new { code = "quota_exceeded", error = $"Plan '{plan}' allows {limit} links; upgrade for more.", plan, quota = limit, used = owned },
                     statusCode: StatusCodes.Status403Forbidden);
             }
         }
@@ -122,10 +122,10 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
     if (!string.IsNullOrWhiteSpace(req.Code))
     {
         if (!Plans.AllowsVanity(plan))
-            return Results.Json(new { error = "Custom codes are a Pro feature." },
+            return Results.Json(new { code = "vanity_forbidden", error = "Custom codes are a Pro feature." },
                 statusCode: StatusCodes.Status403Forbidden);
         if (!CodeGenerator.IsValidVanity(req.Code))
-            return Results.BadRequest(new { error = "Custom code must be 1-32 chars of letters, digits, '-' or '_'." });
+            return Results.BadRequest(new { code = "vanity_invalid", error = "Custom code must be 1-32 chars of letters, digits, '-' or '_'." });
 
         try
         {
@@ -139,7 +139,7 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
         }
         catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
         {
-            return Results.Conflict(new { error = $"'{req.Code}' is already taken." });
+            return Results.Conflict(new { code = "code_taken", error = $"'{req.Code}' is already taken.", requested = req.Code });
         }
     }
 
@@ -148,12 +148,15 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
     if (codeLength is < CodeGenerator.MinLength or > CodeGenerator.MaxLength)
         return Results.BadRequest(new
         {
+            code = "code_length_range",
             error = $"codeLength must be between {CodeGenerator.MinLength} and {CodeGenerator.MaxLength}.",
+            min = CodeGenerator.MinLength,
+            max = CodeGenerator.MaxLength,
         });
     var minLength = Plans.MinCodeLength(plan);
     if (codeLength < minLength)
         return Results.Json(
-            new { error = $"{codeLength}-char codes need a higher plan; '{plan}' starts at {minLength}.", minLength },
+            new { code = "code_length_locked", error = $"{codeLength}-char codes need a higher plan; '{plan}' starts at {minLength}.", plan, minLength },
             statusCode: StatusCodes.Status403Forbidden);
 
     for (var attempt = 0; attempt < 5; attempt++)
@@ -180,7 +183,7 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
         }
     }
 
-    return Results.Problem("Could not allocate a unique code, please try again.", statusCode: 500);
+    return Results.Json(new { code = "code_alloc_failed", error = "Could not allocate a unique code, please try again." }, statusCode: 500);
 });
 
 app.MapGet("/{code}", async (string code, NpgsqlDataSource db, LinkCache cache, ClickRecorder clicks, HttpRequest http) =>

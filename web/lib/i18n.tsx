@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { ApiError } from "./api";
 
 export const LOCALES = ["tr", "en", "de", "ar"] as const;
 export type Locale = (typeof LOCALES)[number];
@@ -31,6 +32,23 @@ const en: Dict = {
   "create.copy": "Copy link",
 
   "common.error": "Something went wrong",
+
+  "err.url_invalid": "Enter a valid http(s) URL.",
+  "err.domain_invalid": "That domain isn't available.",
+  "err.quota_exceeded": "Your {plan} plan allows {quota} links. Upgrade for more.",
+  "err.vanity_forbidden": "Custom codes are a Pro feature.",
+  "err.vanity_invalid": "Use 1-32 letters, digits, '-' or '_'.",
+  "err.code_taken": "That code is already taken.",
+  "err.code_length_range": "Length must be {min}-{max}.",
+  "err.code_length_locked": "{plan} starts at {minLength} chars. Upgrade for shorter.",
+  "err.code_alloc_failed": "Couldn't generate a code. Try again.",
+  "err.email_invalid": "Enter a valid email.",
+  "err.password_short": "Password needs at least {min} characters.",
+  "err.email_taken": "That email is already registered.",
+  "err.bad_credentials": "Wrong email or password.",
+  "err.plan_invalid": "Pick Plus or Pro.",
+  "err.unauthenticated": "Please sign in.",
+  "err.user_not_found": "Account not found.",
 
   "dash.title": "Dashboard",
   "dash.subtitle": "Your links and live gateway telemetry.",
@@ -119,6 +137,23 @@ const tr: Dict = {
 
   "common.error": "Bir şeyler ters gitti",
 
+  "err.url_invalid": "Geçerli bir http(s) URL gir.",
+  "err.domain_invalid": "Bu alan adı kullanılamıyor.",
+  "err.quota_exceeded": "{plan} planında {quota} link hakkın var. Yükselt.",
+  "err.vanity_forbidden": "Özel kod Pro özelliğidir.",
+  "err.vanity_invalid": "1-32 harf, rakam, '-' veya '_' kullan.",
+  "err.code_taken": "Bu kod zaten alınmış.",
+  "err.code_length_range": "Uzunluk {min}-{max} olmalı.",
+  "err.code_length_locked": "{plan} planı {minLength} karakterden başlar. Yükselt.",
+  "err.code_alloc_failed": "Kod üretilemedi, tekrar dene.",
+  "err.email_invalid": "Geçerli bir e-posta gir.",
+  "err.password_short": "Parola en az {min} karakter olmalı.",
+  "err.email_taken": "Bu e-posta zaten kayıtlı.",
+  "err.bad_credentials": "E-posta veya parola yanlış.",
+  "err.plan_invalid": "Plus ya da Pro seç.",
+  "err.unauthenticated": "Lütfen giriş yap.",
+  "err.user_not_found": "Hesap bulunamadı.",
+
   "dash.title": "Panel",
   "dash.subtitle": "Linklerin ve canlı gateway telemetrisi.",
   "dash.telemetry": "Gateway telemetrisi",
@@ -205,6 +240,23 @@ const de: Dict = {
   "create.copy": "Link kopieren",
 
   "common.error": "Etwas ist schiefgelaufen",
+
+  "err.url_invalid": "Gib eine gültige http(s)-URL ein.",
+  "err.domain_invalid": "Diese Domain ist nicht verfügbar.",
+  "err.quota_exceeded": "Dein {plan}-Tarif erlaubt {quota} Links. Upgrade für mehr.",
+  "err.vanity_forbidden": "Eigene Codes sind ein Pro-Feature.",
+  "err.vanity_invalid": "1-32 Buchstaben, Ziffern, '-' oder '_'.",
+  "err.code_taken": "Dieser Code ist bereits vergeben.",
+  "err.code_length_range": "Länge muss {min}-{max} sein.",
+  "err.code_length_locked": "{plan} beginnt bei {minLength} Zeichen. Upgrade für kürzere.",
+  "err.code_alloc_failed": "Code konnte nicht erzeugt werden. Versuch es erneut.",
+  "err.email_invalid": "Gib eine gültige E-Mail ein.",
+  "err.password_short": "Passwort braucht mindestens {min} Zeichen.",
+  "err.email_taken": "Diese E-Mail ist bereits registriert.",
+  "err.bad_credentials": "E-Mail oder Passwort falsch.",
+  "err.plan_invalid": "Wähle Plus oder Pro.",
+  "err.unauthenticated": "Bitte melde dich an.",
+  "err.user_not_found": "Konto nicht gefunden.",
 
   "dash.title": "Dashboard",
   "dash.subtitle": "Deine Links und Live-Telemetrie des Gateways.",
@@ -293,6 +345,23 @@ const ar: Dict = {
 
   "common.error": "حدث خطأ ما",
 
+  "err.url_invalid": "أدخل رابط http(s) صالحًا.",
+  "err.domain_invalid": "هذا النطاق غير متاح.",
+  "err.quota_exceeded": "خطة {plan} تسمح بـ {quota} رابطًا. رقِّ خطتك.",
+  "err.vanity_forbidden": "الرموز المخصصة ميزة Pro.",
+  "err.vanity_invalid": "استخدم 1-32 حرفًا أو رقمًا أو '-' أو '_'.",
+  "err.code_taken": "هذا الرمز مأخوذ بالفعل.",
+  "err.code_length_range": "يجب أن يكون الطول بين {min} و{max}.",
+  "err.code_length_locked": "{plan} يبدأ من {minLength} أحرف. رقِّ للأقصر.",
+  "err.code_alloc_failed": "تعذّر توليد رمز. حاول مجددًا.",
+  "err.email_invalid": "أدخل بريدًا إلكترونيًا صالحًا.",
+  "err.password_short": "كلمة المرور تحتاج {min} أحرف على الأقل.",
+  "err.email_taken": "هذا البريد مسجَّل بالفعل.",
+  "err.bad_credentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
+  "err.plan_invalid": "اختر Plus أو Pro.",
+  "err.unauthenticated": "الرجاء تسجيل الدخول.",
+  "err.user_not_found": "الحساب غير موجود.",
+
   "dash.title": "لوحة التحكم",
   "dash.subtitle": "روابطك وقياسات البوابة الحيّة.",
   "dash.telemetry": "قياسات البوابة",
@@ -375,6 +444,9 @@ type I18n = {
   dir: "ltr" | "rtl";
   setLocale: (l: Locale) => void;
   t: (key: string, params?: Record<string, string | number>) => string;
+  // Localizes an API error by its machine `code` (err.<code>), interpolating the
+  // error body's params; falls back to the backend's English message.
+  tErr: (err: unknown) => string;
 };
 
 const I18nContext = createContext<I18n | null>(null);
@@ -408,9 +480,21 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     return s;
   };
 
+  const tErr = (err: unknown): string => {
+    if (err instanceof ApiError) {
+      if (err.code) {
+        const key = `err.${err.code}`;
+        const s = t(key, err.body as Record<string, string | number>);
+        if (s !== key) return s; // known code → localized
+      }
+      return err.message || t("common.error"); // fall back to the backend's message
+    }
+    return t("common.error");
+  };
+
   const dir = RTL_LOCALES.includes(locale) ? "rtl" : "ltr";
 
-  return <I18nContext.Provider value={{ locale, dir, setLocale, t }}>{children}</I18nContext.Provider>;
+  return <I18nContext.Provider value={{ locale, dir, setLocale, t, tErr }}>{children}</I18nContext.Provider>;
 }
 
 export function useI18n(): I18n {

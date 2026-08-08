@@ -152,6 +152,33 @@ input[type="range"] {
 .row > * { flex: 1; }
 .field { margin-bottom: 18px; }
 
+/* Vanity code: fixed (non-editable) domain prefix + editable slug */
+.code-input {
+  display: flex; align-items: stretch;
+  border: 1px solid var(--line); background: var(--ground-2);
+  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+}
+.code-input:focus-within {
+  border-color: var(--line-bright); background: var(--ground-3);
+  box-shadow: 0 0 0 1px var(--line-bright), 0 0 14px oklch(0.66 0.1 72 / 0.25) inset;
+}
+.code-prefix {
+  display: flex; align-items: center;
+  padding: 10px 8px 10px 12px;
+  color: var(--faint); font-size: 13px; white-space: nowrap;
+  max-width: 58%; overflow: hidden; text-overflow: ellipsis;
+  border-right: 1px solid var(--line); user-select: none;
+}
+.code-slug {
+  flex: 1; min-width: 0;
+  border: none !important; background: transparent !important;
+  box-shadow: none !important; padding-left: 10px;
+}
+[dir="rtl"] .code-prefix {
+  direction: ltr;
+  border-right: none; border-left: 1px solid var(--line);
+}
+
 /* ── Buttons: bracketed commands ─────────────────────────────── */
 button {
   padding: 10px 16px; border: 1px solid var(--line-bright);

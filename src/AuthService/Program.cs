@@ -35,9 +35,9 @@ app.MapPost("/api/auth/register", async (
     Credentials req, NpgsqlDataSource db, IPasswordHasher<UserRow> hasher, TokenService tokens) =>
 {
     if (string.IsNullOrWhiteSpace(req.Email) || !req.Email.Contains('@'))
-        return Results.BadRequest(new { error = "A valid email is required." });
+        return Results.BadRequest(new { code = "email_invalid", error = "A valid email is required." });
     if (req.Password is not { Length: >= 8 })
-        return Results.BadRequest(new { error = "Password must be at least 8 characters." });
+        return Results.BadRequest(new { code = "password_short", error = "Password must be at least 8 characters.", min = 8 });
 
     var email = req.Email.Trim().ToLowerInvariant();
     var hash = hasher.HashPassword(new UserRow(0, email, "", Plans.Free), req.Password);
@@ -52,7 +52,7 @@ app.MapPost("/api/auth/register", async (
     }
     catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
     {
-        return Results.Conflict(new { error = "Email already registered." });
+        return Results.Conflict(new { code = "email_taken", error = "Email already registered." });
     }
 
     var (token, expiresAt) = tokens.Issue(userId, email, Plans.Free, DateTime.UtcNow);
@@ -74,7 +74,8 @@ app.MapPost("/api/auth/login", async (
     var reference = user ?? new UserRow(0, email, dummyHash, Plans.Free);
     var result = hasher.VerifyHashedPassword(reference, reference.PasswordHash, req.Password ?? "");
     if (user is null || result == PasswordVerificationResult.Failed)
-        return Results.Unauthorized();
+        return Results.Json(new { code = "bad_credentials", error = "Wrong email or password." },
+            statusCode: StatusCodes.Status401Unauthorized);
 
     var (token, expiresAt) = tokens.Issue(user.Id, user.Email, user.Plan, DateTime.UtcNow);
     return Results.Ok(new { token, expiresAt, plan = user.Plan });
@@ -89,11 +90,12 @@ app.MapPost("/api/auth/login", async (
 app.MapPost("/api/auth/upgrade", async (UpgradeRequest req, NpgsqlDataSource db, TokenService tokens, HttpRequest http) =>
 {
     if (!long.TryParse(http.Headers["X-User-Id"].FirstOrDefault(), out var userId))
-        return Results.Unauthorized();
+        return Results.Json(new { code = "unauthenticated", error = "Sign in required." },
+            statusCode: StatusCodes.Status401Unauthorized);
 
     var plan = Plans.Normalize(req.Plan);
     if (!Plans.IsValid(plan) || plan == Plans.Free)
-        return Results.BadRequest(new { error = "Choose a paid tier: 'plus' or 'pro'." });
+        return Results.BadRequest(new { code = "plan_invalid", error = "Choose a paid tier: 'plus' or 'pro'." });
 
     await using var conn = await db.OpenConnectionAsync();
     var user = await conn.QueryFirstOrDefaultAsync<UserRow>(
@@ -103,7 +105,8 @@ app.MapPost("/api/auth/upgrade", async (UpgradeRequest req, NpgsqlDataSource db,
         """,
         new { plan, id = userId });
     if (user is null)
-        return Results.NotFound();
+        return Results.Json(new { code = "user_not_found", error = "Account not found." },
+            statusCode: StatusCodes.Status404NotFound);
 
     var (token, expiresAt) = tokens.Issue(user.Id, user.Email, user.Plan, DateTime.UtcNow);
     return Results.Ok(new { token, expiresAt, plan = user.Plan });

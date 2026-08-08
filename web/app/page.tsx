@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, ApiError, getSession } from "@/lib/api";
+import { api, getSession } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
 type Domains = { domains: string[]; default: string };
@@ -11,7 +11,7 @@ type Created = { code: string; domain: string; shortUrl: string };
 const MIN_BY_PLAN: Record<string, number> = { free: 5, plus: 3, pro: 1, premium: 1 };
 
 export default function CreatePage() {
-  const { t } = useI18n();
+  const { t, tErr } = useI18n();
   const [url, setUrl] = useState("");
   const [domain, setDomain] = useState("");
   const [codeLength, setCodeLength] = useState(7);
@@ -62,8 +62,7 @@ export default function CreatePage() {
       setUrl("");
       setCustomCode("");
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : t("common.error");
-      setError(msg);
+      setError(tErr(err));
     } finally {
       setBusy(false);
     }
@@ -125,12 +124,16 @@ export default function CreatePage() {
           {canVanity && (
             <div className="field">
               <label>{t("create.customCode")}</label>
-              <input
-                value={customCode}
-                onChange={(e) => setCustomCode(e.target.value)}
-                placeholder={t("create.customPlaceholder")}
-                maxLength={32}
-              />
+              <div className="code-input">
+                <span className="code-prefix" title={domain}>{domain}/</span>
+                <input
+                  className="code-slug"
+                  value={customCode}
+                  onChange={(e) => setCustomCode(e.target.value)}
+                  placeholder={t("create.customPlaceholder")}
+                  maxLength={32}
+                />
+              </div>
               <div className="hint">{t("create.customHint")}</div>
             </div>
           )}

@@ -31,11 +31,18 @@ export function clearSession() {
   window.dispatchEvent(new Event("session"));
 }
 
+// Carries the API's structured error: a machine-readable `code` the frontend
+// localizes (see i18n `tErr`), the raw English `error` as a fallback, and the
+// full `body` so localized messages can interpolate params (limit, plan, …).
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
-    super(message);
+  code?: string;
+  body: Record<string, unknown>;
+  constructor(status: number, body: Record<string, unknown>) {
+    super(typeof body.error === "string" ? body.error : `Request failed (${status})`);
     this.status = status;
+    this.code = typeof body.code === "string" ? body.code : undefined;
+    this.body = body;
   }
 }
 
@@ -50,7 +57,7 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}): Pr
   const body = text ? JSON.parse(text) : {};
 
   if (!res.ok) {
-    throw new ApiError(res.status, body.error ?? `Request failed (${res.status})`);
+    throw new ApiError(res.status, body);
   }
   return body as T;
 }
