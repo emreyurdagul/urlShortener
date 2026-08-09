@@ -13,6 +13,10 @@ public sealed class ProxyHandler(RouteTable routes, ILogger<ProxyHandler> logger
     // Client span per backend hop; the name is registered via AddSource("Gateway.Proxy").
     private static readonly ActivitySource Trace = new("Gateway.Proxy");
 
+    // Explicit W3C propagator — the global Propagators.DefaultTextMapPropagator can
+    // be a no-op depending on init order, so inject with a concrete one.
+    private static readonly TraceContextPropagator Propagator = new();
+
     private static readonly HttpMessageInvoker Client = new(new SocketsHttpHandler
     {
         UseProxy = false,
@@ -170,10 +174,11 @@ public sealed class ProxyHandler(RouteTable routes, ILogger<ProxyHandler> logger
         // backend's spans into the same trace as the gateway's.
         request.Headers.Remove("traceparent");
         request.Headers.Remove("tracestate");
-        Propagators.DefaultTextMapPropagator.Inject(
-            new PropagationContext(Activity.Current?.Context ?? default, Baggage.Current),
-            request.Headers,
-            static (headers, key, value) => headers.TryAddWithoutValidation(key, value));
+        if (Activity.Current is { } current)
+            Propagator.Inject(
+                new PropagationContext(current.Context, Baggage.Current),
+                request.Headers,
+                static (headers, key, value) => headers.TryAddWithoutValidation(key, value));
 
         return request;
     }
