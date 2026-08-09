@@ -19,6 +19,7 @@ builder.Services.AddSingleton<LinkCache>();
 builder.Services.AddSingleton<ClickRecorder>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<ClickShipper>();
+builder.Services.AddHostedService<CacheInvalidator>();
 
 // Distributed tracing: server spans + outgoing HTTP (to analytics) + Postgres
 // spans, exported over OTLP (endpoint from OTEL_EXPORTER_OTLP_ENDPOINT) to Tempo.
@@ -217,6 +218,7 @@ app.MapDelete("/api/links/{code}", async (string code, string? domain, NpgsqlDat
         return Results.NotFound(new { code = "link_not_found", error = "Link not found." });
 
     cache.Remove(dom, code);
+    await CacheInvalidator.NotifyAsync(conn, dom, code);
     return Results.NoContent();
 });
 
@@ -237,7 +239,8 @@ app.MapPut("/api/links/{code}", async (string code, string? domain, UpdateLinkRe
     if (rows == 0)
         return Results.NotFound(new { code = "link_not_found", error = "Link not found." });
 
-    cache.Set(dom, code, target.AbsoluteUri);
+    cache.Remove(dom, code);
+    await CacheInvalidator.NotifyAsync(conn, dom, code);
     return Results.Ok(new { code, domain = dom, targetUrl = target.AbsoluteUri });
 });
 
