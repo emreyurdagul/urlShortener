@@ -70,7 +70,8 @@ app.MapPost("/api/auth/register", async (
     }
 
     var (token, expiresAt) = tokens.Issue(userId, email, Plans.Free, DateTime.UtcNow);
-    return Results.Ok(new { token, expiresAt, plan = Plans.Free });
+    var refreshToken = await RefreshTokens.IssueAsync(conn, userId);
+    return Results.Ok(new { token, expiresAt, plan = Plans.Free, refreshToken });
 });
 
 app.MapPost("/api/auth/login", async (
@@ -92,7 +93,8 @@ app.MapPost("/api/auth/login", async (
             statusCode: StatusCodes.Status401Unauthorized);
 
     var (token, expiresAt) = tokens.Issue(user.Id, user.Email, user.Plan, DateTime.UtcNow);
-    return Results.Ok(new { token, expiresAt, plan = user.Plan });
+    var refreshToken = await RefreshTokens.IssueAsync(conn, user.Id);
+    return Results.Ok(new { token, expiresAt, plan = user.Plan, refreshToken });
 });
 
 // Self-serve tier upgrade. Unlike the old admin-ish /api/auth/plan (which let
@@ -126,7 +128,49 @@ app.MapPost("/api/auth/upgrade", async (UpgradeRequest req, NpgsqlDataSource db,
     return Results.Ok(new { token, expiresAt, plan = user.Plan });
 });
 
+// Exchange a refresh token for a new access token, rotating the refresh token
+// (revoke the old, issue a new) so a leaked-then-used token works only once.
+app.MapPost("/api/auth/refresh", async (RefreshRequest req, NpgsqlDataSource db, TokenService tokens) =>
+{
+    if (string.IsNullOrWhiteSpace(req.RefreshToken))
+        return Results.BadRequest(new { code = "refresh_invalid", error = "Missing refresh token." });
+
+    var hash = RefreshTokens.Hash(req.RefreshToken);
+    await using var conn = await db.OpenConnectionAsync();
+    var row = await conn.QueryFirstOrDefaultAsync(
+        """
+        SELECT rt.id AS tokenid, u.id AS userid, u.email AS email, u.plan AS plan
+        FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id
+        WHERE rt.token_hash = @hash AND rt.revoked_at IS NULL AND rt.expires_at > now()
+        """, new { hash });
+    if (row is null)
+        return Results.Json(new { code = "refresh_invalid", error = "Invalid or expired refresh token." },
+            statusCode: StatusCodes.Status401Unauthorized);
+
+    long userId = row.userid;
+    string email = row.email;
+    string plan = row.plan;
+    await conn.ExecuteAsync("UPDATE refresh_tokens SET revoked_at = now() WHERE id = @id", new { id = (long)row.tokenid });
+    var refreshToken = await RefreshTokens.IssueAsync(conn, userId);
+    var (token, expiresAt) = tokens.Issue(userId, email, plan, DateTime.UtcNow);
+    return Results.Ok(new { token, expiresAt, plan, refreshToken });
+});
+
+// Revoke a refresh token (logout). Idempotent.
+app.MapPost("/api/auth/logout", async (RefreshRequest req, NpgsqlDataSource db) =>
+{
+    if (!string.IsNullOrWhiteSpace(req.RefreshToken))
+    {
+        await using var conn = await db.OpenConnectionAsync();
+        await conn.ExecuteAsync(
+            "UPDATE refresh_tokens SET revoked_at = now() WHERE token_hash = @hash AND revoked_at IS NULL",
+            new { hash = RefreshTokens.Hash(req.RefreshToken) });
+    }
+    return Results.NoContent();
+});
+
 app.Run();
 
 public sealed record Credentials(string Email, string Password);
 public sealed record UpgradeRequest(string Plan);
+public sealed record RefreshRequest(string RefreshToken);

@@ -40,7 +40,8 @@ public sealed class JwtService
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
         _credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         _issuer = config["JWT_ISSUER"] ?? "urlshortener-mono";
-        _lifetime = TimeSpan.FromHours(double.TryParse(config["JWT_LIFETIME_HOURS"], out var h) ? h : 24);
+        // Short-lived access token; refresh tokens keep the session alive.
+        _lifetime = TimeSpan.FromMinutes(double.TryParse(config["JWT_LIFETIME_MINUTES"], out var m) ? m : 15);
 
         _validation = new TokenValidationParameters
         {

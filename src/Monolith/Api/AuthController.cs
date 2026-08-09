@@ -21,7 +21,7 @@ public sealed class AuthController(AuthAppService auth) : ControllerBase
         var result = await auth.RegisterAsync(req.Email, req.Password);
         return result is null
             ? Conflict(new { code = "email_taken", error = "Email already registered." })
-            : Ok(new { token = result.Token, expiresAt = result.ExpiresAt, plan = result.Plan });
+            : Ok(new { token = result.Token, expiresAt = result.ExpiresAt, plan = result.Plan, refreshToken = result.RefreshToken });
     }
 
     [HttpPost("login")]
@@ -30,7 +30,29 @@ public sealed class AuthController(AuthAppService auth) : ControllerBase
         var result = await auth.LoginAsync(req.Email, req.Password);
         return result is null
             ? Unauthorized(new { code = "bad_credentials", error = "Wrong email or password." })
-            : Ok(new { token = result.Token, expiresAt = result.ExpiresAt, plan = result.Plan });
+            : Ok(new { token = result.Token, expiresAt = result.ExpiresAt, plan = result.Plan, refreshToken = result.RefreshToken });
+    }
+
+    // Exchange a refresh token for a fresh access token (rotates the refresh token).
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh(RefreshRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.RefreshToken))
+            return BadRequest(new { code = "refresh_invalid", error = "Missing refresh token." });
+
+        var result = await auth.RefreshAsync(req.RefreshToken);
+        return result is null
+            ? Unauthorized(new { code = "refresh_invalid", error = "Invalid or expired refresh token." })
+            : Ok(new { token = result.Token, expiresAt = result.ExpiresAt, plan = result.Plan, refreshToken = result.RefreshToken });
+    }
+
+    // Revoke a refresh token (logout). Idempotent.
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout(RefreshRequest req)
+    {
+        if (!string.IsNullOrWhiteSpace(req.RefreshToken))
+            await auth.LogoutAsync(req.RefreshToken);
+        return NoContent();
     }
 
     // Self-serve tier upgrade for the AUTHENTICATED caller (identity comes from

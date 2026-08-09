@@ -47,7 +47,12 @@ export default function UpgradePage() {
         method: "POST",
         body: JSON.stringify({ plan }),
       });
-      saveSession({ token: res.token, plan: res.plan, email: session?.email ?? "" });
+      saveSession({
+        token: res.token,
+        refreshToken: session?.refreshToken ?? "",
+        plan: res.plan,
+        email: session?.email ?? "",
+      });
       setDone(t("upgrade.success", { plan: t(`tier.${normPlan(res.plan)}.name`) }));
     } catch (err) {
       setError(tErr(err));

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { api, saveSession } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
-type AuthResponse = { token: string; plan: string };
+type AuthResponse = { token: string; refreshToken: string; plan: string };
 
 export default function LoginPage() {
   const { t, tErr } = useI18n();
@@ -25,7 +25,7 @@ export default function LoginPage() {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      saveSession({ token: res.token, plan: res.plan, email });
+      saveSession({ token: res.token, refreshToken: res.refreshToken, plan: res.plan, email });
       router.push("/dashboard");
     } catch (err) {
       setError(tErr(err));

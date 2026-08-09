@@ -37,3 +37,9 @@ public sealed class MonolithFactory : WebApplicationFactory<Program>, IAsyncLife
         await base.DisposeAsync();
     }
 }
+
+/// <summary>Shares one factory (one Postgres container) across all test classes,
+/// so they run sequentially against a single container rather than spinning one
+/// each in parallel.</summary>
+[CollectionDefinition("monolith")]
+public sealed class MonolithCollection : ICollectionFixture<MonolithFactory>;

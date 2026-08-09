@@ -15,13 +15,15 @@ namespace Monolith;
 public sealed class AuthAppService
 {
     private readonly UserRepository _users;
+    private readonly RefreshTokenRepository _refresh;
     private readonly IPasswordHasher<UserRow> _hasher;
     private readonly JwtService _jwt;
     private readonly string _dummyHash;
 
-    public AuthAppService(UserRepository users, IPasswordHasher<UserRow> hasher, JwtService jwt)
+    public AuthAppService(UserRepository users, RefreshTokenRepository refresh, IPasswordHasher<UserRow> hasher, JwtService jwt)
     {
         _users = users;
+        _refresh = refresh;
         _hasher = hasher;
         _jwt = jwt;
         // Precomputed hash of a random password; verifying against it on an
@@ -32,7 +34,14 @@ public sealed class AuthAppService
             Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)));
     }
 
-    public sealed record AuthResult(string Token, DateTime ExpiresAt, string Plan);
+    public sealed record AuthResult(string Token, DateTime ExpiresAt, string Plan, string RefreshToken = "");
+
+    private async Task<string> NewRefreshAsync(long userId)
+    {
+        var (raw, hash) = RefreshTokens.New();
+        await _refresh.IssueAsync(userId, hash, DateTime.UtcNow + RefreshTokens.Lifetime);
+        return raw;
+    }
 
     /// <summary>Returns null when the email is already registered.</summary>
     public async Task<AuthResult?> RegisterAsync(string email, string password)
@@ -51,7 +60,7 @@ public sealed class AuthAppService
         }
 
         var (token, expiresAt) = _jwt.Issue(userId, email, Plans.Free, DateTime.UtcNow);
-        return new AuthResult(token, expiresAt, Plans.Free);
+        return new AuthResult(token, expiresAt, Plans.Free, await NewRefreshAsync(userId));
     }
 
     /// <summary>Returns null on bad credentials.</summary>
@@ -68,8 +77,21 @@ public sealed class AuthAppService
             return null;
 
         var (token, expiresAt) = _jwt.Issue(user.Id, user.Email, user.Plan, DateTime.UtcNow);
-        return new AuthResult(token, expiresAt, user.Plan);
+        return new AuthResult(token, expiresAt, user.Plan, await NewRefreshAsync(user.Id));
     }
+
+    /// <summary>Rotates a refresh token and mints a new access token; null if the token is invalid.</summary>
+    public async Task<AuthResult?> RefreshAsync(string rawToken)
+    {
+        if (await _refresh.FindActiveAsync(RefreshTokens.Hash(rawToken)) is not { } t)
+            return null;
+        await _refresh.RevokeByIdAsync(t.TokenId);
+        var (token, expiresAt) = _jwt.Issue(t.UserId, t.Email, t.Plan, DateTime.UtcNow);
+        return new AuthResult(token, expiresAt, t.Plan, await NewRefreshAsync(t.UserId));
+    }
+
+    /// <summary>Revokes a refresh token (logout). Idempotent.</summary>
+    public Task LogoutAsync(string rawToken) => _refresh.RevokeByHashAsync(RefreshTokens.Hash(rawToken));
 
     /// <summary>
     /// Upgrades an authenticated user's tier and returns a FRESH token carrying

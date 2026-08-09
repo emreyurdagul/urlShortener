@@ -29,7 +29,9 @@ public sealed class TokenService
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
         _credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         _issuer = config["JWT_ISSUER"] ?? "urlshortener-auth";
-        _lifetime = TimeSpan.FromHours(double.TryParse(config["JWT_LIFETIME_HOURS"], out var h) ? h : 24);
+        // Short-lived access token — refresh tokens keep the session alive, so a
+        // stolen access token is only usable for minutes.
+        _lifetime = TimeSpan.FromMinutes(double.TryParse(config["JWT_LIFETIME_MINUTES"], out var m) ? m : 15);
     }
 
     public (string Token, DateTime ExpiresAt) Issue(long userId, string email, string plan, DateTime nowUtc)

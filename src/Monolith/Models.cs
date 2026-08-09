@@ -16,3 +16,4 @@ public sealed record CreateLinkRequest(string Url, string? Domain, int? CodeLeng
 public sealed record UpdateLinkRequest(string Url);
 public sealed record Credentials(string Email, string Password);
 public sealed record UpgradeRequest(string Plan);
+public sealed record RefreshRequest(string RefreshToken);

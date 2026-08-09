@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { clearSession, getSession, type Session } from "@/lib/api";
+import { logout, getSession, type Session } from "@/lib/api";
 import { LOCALES, LOCALE_LABELS, useI18n, type Locale } from "@/lib/i18n";
 
 // Legacy "premium" tokens read as the top tier.
@@ -67,7 +67,7 @@ export function Nav() {
             href="#"
             onClick={(e) => {
               e.preventDefault();
-              clearSession();
+              logout();
             }}
           >
             {t("nav.signout")}

@@ -28,6 +28,7 @@ builder.Services.AddSingleton(new TokenBucketRateLimiter(rateCapacity, rateRefil
 
 // Data layer (repositories) — stateless over the singleton data source.
 builder.Services.AddSingleton<UserRepository>();
+builder.Services.AddSingleton<RefreshTokenRepository>();
 builder.Services.AddSingleton<LinkRepository>();
 builder.Services.AddSingleton<ClickRepository>();
 

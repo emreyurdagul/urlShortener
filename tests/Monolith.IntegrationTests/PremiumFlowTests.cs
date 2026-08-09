@@ -11,7 +11,8 @@ namespace Monolith.IntegrationTests;
 /// exercise the tier gating, vanity codes, self-serve upgrade (fresh token),
 /// redirect, and the async click → analytics pipeline through actual HTTP.
 /// </summary>
-public sealed class PremiumFlowTests(MonolithFactory factory) : IClassFixture<MonolithFactory>
+[Collection("monolith")]
+public sealed class PremiumFlowTests(MonolithFactory factory)
 {
     private HttpClient NoRedirectClient() =>
         factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
