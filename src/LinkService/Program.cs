@@ -201,6 +201,46 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
     return Results.Json(new { code = "code_alloc_failed", error = "Could not allocate a unique code, please try again." }, statusCode: 500);
 });
 
+// Delete a link the caller owns. Ownership is enforced in the WHERE clause
+// (owner_id must match the trusted header), so 0 rows = not found or not yours.
+app.MapDelete("/api/links/{code}", async (string code, string? domain, NpgsqlDataSource db, LinkCache cache, HttpRequest http) =>
+{
+    if (!long.TryParse(http.Headers[IdentityHeaders.UserId].FirstOrDefault(), out var owner))
+        return Results.Json(new { code = "unauthenticated", error = "Sign in required." }, statusCode: StatusCodes.Status401Unauthorized);
+
+    var dom = (domain ?? http.Headers["X-Forwarded-Host"].FirstOrDefault() ?? "").ToLowerInvariant();
+    await using var conn = await db.OpenConnectionAsync();
+    var rows = await conn.ExecuteAsync(
+        "DELETE FROM links WHERE domain = @dom AND code = @code AND owner_id = @owner",
+        new { dom, code, owner });
+    if (rows == 0)
+        return Results.NotFound(new { code = "link_not_found", error = "Link not found." });
+
+    cache.Remove(dom, code);
+    return Results.NoContent();
+});
+
+// Edit a link's destination (owner-only). Codes are immutable; only the target
+// changes. The local cache is refreshed; other replicas expire on TTL.
+app.MapPut("/api/links/{code}", async (string code, string? domain, UpdateLinkRequest req, NpgsqlDataSource db, LinkCache cache, HttpRequest http) =>
+{
+    if (!long.TryParse(http.Headers[IdentityHeaders.UserId].FirstOrDefault(), out var owner))
+        return Results.Json(new { code = "unauthenticated", error = "Sign in required." }, statusCode: StatusCodes.Status401Unauthorized);
+    if (!Uri.TryCreate(req.Url, UriKind.Absolute, out var target) || target.Scheme is not ("http" or "https"))
+        return Results.BadRequest(new { code = "url_invalid", error = "URL must be an absolute http(s) URL." });
+
+    var dom = (domain ?? http.Headers["X-Forwarded-Host"].FirstOrDefault() ?? "").ToLowerInvariant();
+    await using var conn = await db.OpenConnectionAsync();
+    var rows = await conn.ExecuteAsync(
+        "UPDATE links SET target_url = @target WHERE domain = @dom AND code = @code AND owner_id = @owner",
+        new { target = target.AbsoluteUri, dom, code, owner });
+    if (rows == 0)
+        return Results.NotFound(new { code = "link_not_found", error = "Link not found." });
+
+    cache.Set(dom, code, target.AbsoluteUri);
+    return Results.Ok(new { code, domain = dom, targetUrl = target.AbsoluteUri });
+});
+
 app.MapGet("/{code}", async (string code, NpgsqlDataSource db, LinkCache cache, ClickRecorder clicks, HttpRequest http) =>
 {
     // The gateway carries the public hostname in X-Forwarded-Host; that hostname
@@ -235,6 +275,8 @@ app.MapGet("/{code}", async (string code, NpgsqlDataSource db, LinkCache cache, 
 app.Run();
 
 public sealed record CreateLinkRequest(string Url, string? Domain, int? CodeLength, string? Code);
+
+public sealed record UpdateLinkRequest(string Url);
 
 public sealed record LinkRow(string Domain, string Code, string TargetUrl, DateTime CreatedAt);
 

@@ -66,7 +66,35 @@ app.MapGet("/api/analytics/{code}", async (string code, string? domain, NpgsqlDa
         """,
         new { code, domain });
 
-    return Results.Ok(new { code, total = (long)(stats?.total ?? 0L), lastClick = stats?.last_click });
+    // Per-day counts over the last 7 days (for a sparkline).
+    var daily = (await conn.QueryAsync(
+        """
+        SELECT to_char(date_trunc('day', clicked_at), 'YYYY-MM-DD') AS day, COUNT(*) AS count
+        FROM clicks
+        WHERE code = @code AND (@domain IS NULL OR domain = @domain)
+          AND clicked_at >= now() - interval '7 days'
+        GROUP BY 1 ORDER BY 1
+        """, new { code, domain }))
+        .Select(r => new { day = (string)r.day, count = (long)r.count });
+
+    // Top referrers (blank referer shown as "direct").
+    var topReferrers = (await conn.QueryAsync(
+        """
+        SELECT COALESCE(NULLIF(referer, ''), 'direct') AS referer, COUNT(*) AS count
+        FROM clicks
+        WHERE code = @code AND (@domain IS NULL OR domain = @domain)
+        GROUP BY 1 ORDER BY count DESC LIMIT 5
+        """, new { code, domain }))
+        .Select(r => new { referer = (string)r.referer, count = (long)r.count });
+
+    return Results.Ok(new
+    {
+        code,
+        total = (long)(stats?.total ?? 0L),
+        lastClick = stats?.last_click,
+        daily,
+        topReferrers,
+    });
 });
 
 app.Run();

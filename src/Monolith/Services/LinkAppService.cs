@@ -104,6 +104,26 @@ public sealed class LinkAppService(
 
     public Task<IReadOnlyList<LinkRow>> ListAsync(long ownerId) => links.ListByOwnerAsync(ownerId);
 
+    /// <summary>Deletes an owned link and drops its cache entry. False if not found/owner.</summary>
+    public async Task<bool> DeleteAsync(string domain, string code, long ownerId)
+    {
+        domain = domain.ToLowerInvariant();
+        if (await links.DeleteAsync(domain, code, ownerId) == 0)
+            return false;
+        cache.Remove(domain, code);
+        return true;
+    }
+
+    /// <summary>Edits an owned link's destination (codes are immutable). False if not found/owner.</summary>
+    public async Task<bool> UpdateAsync(string domain, string code, long ownerId, string targetUrl)
+    {
+        domain = domain.ToLowerInvariant();
+        if (await links.UpdateTargetAsync(domain, code, ownerId, targetUrl) == 0)
+            return false;
+        cache.Set(domain, code, targetUrl);
+        return true;
+    }
+
     public Task<(string Domain, string Code)> FindForQrAsync(string code) => links.FindForQrAsync(code);
 
     /// <summary>

@@ -25,6 +25,24 @@ public sealed class LinkRepository(NpgsqlDataSource db)
             "SELECT COUNT(*) FROM links WHERE owner_id = @ownerId", new { ownerId });
     }
 
+    /// <summary>Deletes an owned link. Returns rows affected (0 = not found / not owner).</summary>
+    public async Task<int> DeleteAsync(string domain, string code, long ownerId)
+    {
+        await using var conn = await db.OpenConnectionAsync();
+        return await conn.ExecuteAsync(
+            "DELETE FROM links WHERE domain = @domain AND code = @code AND owner_id = @ownerId",
+            new { domain, code, ownerId });
+    }
+
+    /// <summary>Updates an owned link's target. Returns rows affected.</summary>
+    public async Task<int> UpdateTargetAsync(string domain, string code, long ownerId, string targetUrl)
+    {
+        await using var conn = await db.OpenConnectionAsync();
+        return await conn.ExecuteAsync(
+            "UPDATE links SET target_url = @targetUrl WHERE domain = @domain AND code = @code AND owner_id = @ownerId",
+            new { domain, code, ownerId, targetUrl });
+    }
+
     public async Task<string?> FindTargetAsync(string domain, string code)
     {
         await using var conn = await db.OpenConnectionAsync();

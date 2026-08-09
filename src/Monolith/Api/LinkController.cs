@@ -66,4 +66,30 @@ public sealed class LinkController(LinkAppService links) : ControllerBase
             shortUrl = $"{Scheme}://{result.Domain}/{result.Code}",
         });
     }
+
+    [HttpDelete("/api/links/{code}")]
+    public async Task<IActionResult> Delete(string code, [FromQuery] string? domain)
+    {
+        if (CurrentUser is not { } user)
+            return Unauthorized(new { code = "unauthenticated", error = "Sign in required." });
+
+        var dom = (domain ?? Request.Headers["X-Forwarded-Host"].FirstOrDefault() ?? Request.Host.Value ?? "").ToLowerInvariant();
+        return await links.DeleteAsync(dom, code, user.UserId)
+            ? NoContent()
+            : NotFound(new { code = "link_not_found", error = "Link not found." });
+    }
+
+    [HttpPut("/api/links/{code}")]
+    public async Task<IActionResult> Update(string code, [FromQuery] string? domain, UpdateLinkRequest req)
+    {
+        if (CurrentUser is not { } user)
+            return Unauthorized(new { code = "unauthenticated", error = "Sign in required." });
+        if (!Uri.TryCreate(req.Url, UriKind.Absolute, out var target) || target.Scheme is not ("http" or "https"))
+            return BadRequest(new { code = "url_invalid", error = "URL must be an absolute http(s) URL." });
+
+        var dom = (domain ?? Request.Headers["X-Forwarded-Host"].FirstOrDefault() ?? Request.Host.Value ?? "").ToLowerInvariant();
+        return await links.UpdateAsync(dom, code, user.UserId, target.AbsoluteUri)
+            ? Ok(new { code, domain = dom, targetUrl = target.AbsoluteUri })
+            : NotFound(new { code = "link_not_found", error = "Link not found." });
+    }
 }

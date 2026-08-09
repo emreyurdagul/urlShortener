@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, getSession } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -14,15 +14,18 @@ type LinkItem = {
   createdAt: string;
 };
 
-type Stats = { total: number; lastClick: string | null };
+type Stats = {
+  total: number;
+  lastClick: string | null;
+  daily?: { day: string; count: number }[];
+  topReferrers?: { referer: string; count: number }[];
+};
 
 type Snapshot = {
   requestRate: number;
   totalRequests: number;
   errorRatio: number;
   rateLimitedRate: number;
-  // null when there's no recent traffic — latency is meaningless then, so the
-  // UI shows "—" instead of a frozen histogram artifact.
   p50Ms: number | null;
   p95Ms: number | null;
   p99Ms: number | null;
@@ -31,7 +34,6 @@ type Snapshot = {
 
 const BLOCKS = "▁▂▃▄▅▆▇█";
 
-// A terminal-native sparkline: one phosphor block per sample, tallest = live max.
 function Sparkline({ values }: { values: number[] }) {
   const max = Math.max(...values, 1);
   const cells = values
@@ -39,19 +41,34 @@ function Sparkline({ values }: { values: number[] }) {
     .join("");
   return (
     <div className="spark" aria-hidden="true">
-      {cells || " ".repeat(8)}
+      {cells || " ".repeat(8)}
     </div>
   );
 }
 
+// Fill the last 7 days (UTC) so the sparkline is a fixed 7-slot shape.
+function last7(daily?: { day: string; count: number }[]): number[] {
+  const map = new Map((daily ?? []).map((d) => [d.day, d.count]));
+  const out: number[] = [];
+  const now = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setUTCDate(now.getUTCDate() - i);
+    out.push(map.get(d.toISOString().slice(0, 10)) ?? 0);
+  }
+  return out;
+}
+
 export default function DashboardPage() {
-  const { t } = useI18n();
+  const { t, tErr } = useI18n();
   const router = useRouter();
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [stats, setStats] = useState<Record<string, Stats>>({});
   const [loading, setLoading] = useState(true);
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [connected, setConnected] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [error, setError] = useState("");
   const history = useRef<number[]>([]);
 
   useEffect(() => {
@@ -62,14 +79,12 @@ export default function DashboardPage() {
     api<{ links: LinkItem[] }>("/api/links")
       .then((d) => {
         setLinks(d.links);
-        // Per-link click totals from the analytics service. N calls (one per
-        // link) is fine at this scale; a batch endpoint would be the next step.
         Promise.all(
           d.links.map((l) =>
             api<Stats & { code: string }>(
               `/api/analytics/${encodeURIComponent(l.code)}?domain=${encodeURIComponent(l.domain)}`,
             )
-              .then((s) => [l.code, { total: s.total, lastClick: s.lastClick }] as const)
+              .then((s) => [l.code, s] as const)
               .catch(() => [l.code, { total: 0, lastClick: null }] as const),
           ),
         ).then((entries) => setStats(Object.fromEntries(entries)));
@@ -103,6 +118,34 @@ export default function DashboardPage() {
       ws?.close();
     };
   }, []);
+
+  async function remove(l: LinkItem) {
+    if (!window.confirm(t("dash.confirmDelete", { code: l.code }))) return;
+    setError("");
+    try {
+      await api(`/api/links/${encodeURIComponent(l.code)}?domain=${encodeURIComponent(l.domain)}`, {
+        method: "DELETE",
+      });
+      setLinks((ls) => ls.filter((x) => x.code !== l.code || x.domain !== l.domain));
+    } catch (err) {
+      setError(tErr(err));
+    }
+  }
+
+  async function edit(l: LinkItem) {
+    const url = window.prompt(t("dash.editPrompt"), l.targetUrl);
+    if (!url || url === l.targetUrl) return;
+    setError("");
+    try {
+      const res = await api<{ targetUrl: string }>(
+        `/api/links/${encodeURIComponent(l.code)}?domain=${encodeURIComponent(l.domain)}`,
+        { method: "PUT", body: JSON.stringify({ url }) },
+      );
+      setLinks((ls) => ls.map((x) => (x.code === l.code && x.domain === l.domain ? { ...x, targetUrl: res.targetUrl } : x)));
+    } catch (err) {
+      setError(tErr(err));
+    }
+  }
 
   return (
     <div>
@@ -163,6 +206,7 @@ export default function DashboardPage() {
 
       <div className="card">
         <div className="section-title">{t("dash.yourLinks")}</div>
+        {error && <div className="error">{error}</div>}
         {loading ? (
           <div className="empty">{t("dash.loading")}</div>
         ) : links.length === 0 ? (
@@ -176,30 +220,75 @@ export default function DashboardPage() {
                 <th>{t("dash.colDest")}</th>
                 <th className="num-col">{t("dash.colClicks")}</th>
                 <th>{t("dash.colCreated")}</th>
+                <th className="act-col">{t("dash.colActions")}</th>
               </tr>
             </thead>
             <tbody>
               {links.map((l) => {
                 const s = stats[l.code];
+                const open = expanded === l.code;
                 return (
-                  <tr key={l.code}>
-                    <td data-label={t("dash.colQr")}>
-                      <img src={l.qrUrl} alt="QR" />
-                    </td>
-                    <td className="code" data-label={t("dash.colShort")}>
-                      <a href={l.shortUrl} target="_blank" rel="noreferrer">
-                        {l.domain}/{l.code}
-                      </a>
-                    </td>
-                    <td className="tgt" data-label={t("dash.colDest")}>{l.targetUrl}</td>
-                    <td className="clicks" data-label={t("dash.colClicks")}>
-                      <span className="clicks-n">{s ? s.total : "·"}</span>
-                      {s?.lastClick && (
-                        <span className="clicks-last">{new Date(s.lastClick).toLocaleDateString()}</span>
-                      )}
-                    </td>
-                    <td className="tgt" data-label={t("dash.colCreated")}>{new Date(l.createdAt).toLocaleDateString()}</td>
-                  </tr>
+                  <Fragment key={l.code}>
+                    <tr>
+                      <td data-label={t("dash.colQr")}>
+                        <img src={l.qrUrl} alt="QR" />
+                      </td>
+                      <td className="code" data-label={t("dash.colShort")}>
+                        <a href={l.shortUrl} target="_blank" rel="noreferrer">
+                          {l.domain}/{l.code}
+                        </a>
+                      </td>
+                      <td className="tgt" data-label={t("dash.colDest")}>{l.targetUrl}</td>
+                      <td className="clicks" data-label={t("dash.colClicks")}>
+                        <button
+                          className="clicks-btn"
+                          onClick={() => setExpanded(open ? null : l.code)}
+                          title={t("dash.detailToggle")}
+                        >
+                          <span className="clicks-n">{s ? s.total : "·"}</span>
+                          {s?.lastClick && (
+                            <span className="clicks-last">{new Date(s.lastClick).toLocaleDateString()}</span>
+                          )}
+                        </button>
+                      </td>
+                      <td className="tgt" data-label={t("dash.colCreated")}>{new Date(l.createdAt).toLocaleDateString()}</td>
+                      <td className="actions" data-label={t("dash.colActions")}>
+                        <button className="icon-btn" onClick={() => edit(l)} title={t("dash.edit")}>✎</button>
+                        <button className="icon-btn danger" onClick={() => remove(l)} title={t("dash.delete")}>✕</button>
+                      </td>
+                    </tr>
+                    {open && (
+                      <tr className="detail-row">
+                        <td colSpan={6}>
+                          <div className="detail">
+                            <div className="detail-block">
+                              <div className="detail-k">{t("dash.detail7d")}</div>
+                              {s && s.total > 0 ? (
+                                <Sparkline values={last7(s.daily)} />
+                              ) : (
+                                <div className="hint">{t("dash.detailNone")}</div>
+                              )}
+                            </div>
+                            <div className="detail-block">
+                              <div className="detail-k">{t("dash.detailReferrers")}</div>
+                              {s?.topReferrers?.length ? (
+                                <ul className="ref-list">
+                                  {s.topReferrers.map((r) => (
+                                    <li key={r.referer}>
+                                      <span className="ref-n">{r.count}</span>
+                                      <span className="ref-src">{r.referer === "direct" ? t("dash.direct") : r.referer}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <div className="hint">{t("dash.detailNone")}</div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>

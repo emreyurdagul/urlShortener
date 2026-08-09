@@ -317,6 +317,38 @@ button.ghost:hover { background: var(--ground-2); color: var(--amber-bright); bo
 .links-table .clicks-last {
   display: block; color: var(--dim); font-size: 10.5px; margin-top: 2px;
 }
+
+/* Row actions + click-detail expander */
+.links-table .act-col { text-align: right; }
+.links-table td.actions { text-align: right; white-space: nowrap; }
+.icon-btn {
+  background: transparent; border: 1px solid var(--line); color: var(--dim);
+  padding: 3px 9px; font-size: 13px; margin-left: 6px; font-weight: 400; text-transform: none;
+}
+.icon-btn::before, .icon-btn::after { content: ""; }
+.icon-btn:hover { color: var(--amber-bright); border-color: var(--line-bright); background: var(--ground-2); box-shadow: none; }
+.icon-btn.danger:hover { color: var(--alarm); border-color: var(--alarm-dim); background: oklch(0.66 0.19 33 / 0.08); }
+.clicks-btn {
+  background: transparent; border: none; padding: 0; margin: 0; cursor: pointer;
+  color: inherit; text-transform: none; letter-spacing: 0; box-shadow: none;
+  font-family: var(--mono); text-align: right;
+}
+.clicks-btn::before, .clicks-btn::after { content: ""; }
+.clicks-btn:hover { background: transparent; box-shadow: none; }
+.clicks-btn:hover .clicks-n { text-decoration: underline; text-underline-offset: 3px; }
+
+.detail-row td { padding: 0 10px 14px; }
+.detail {
+  display: flex; gap: 40px; flex-wrap: wrap;
+  padding: 14px 16px; border: 1px solid var(--line); background: var(--ground-2);
+}
+.detail-block { min-width: 150px; }
+.detail-k { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); margin-bottom: 8px; }
+.detail .spark { font-size: 17px; margin: 0; }
+.ref-list { list-style: none; margin: 0; padding: 0; }
+.ref-list li { display: flex; gap: 10px; align-items: baseline; padding: 3px 0; font-size: 12px; }
+.ref-n { color: var(--amber-bright); font-weight: 700; min-width: 26px; text-align: right; }
+.ref-src { color: var(--dim); word-break: break-all; }
 [dir="rtl"] .links-table .num-col,
 [dir="rtl"] .links-table .clicks { text-align: left; }
 [dir="rtl"] .links-table .clicks { direction: ltr; }

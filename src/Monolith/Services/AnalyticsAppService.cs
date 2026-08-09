@@ -6,6 +6,17 @@ namespace Monolith;
 /// </summary>
 public sealed class AnalyticsAppService(ClickRepository clicks)
 {
-    public Task<(long Total, DateTime? LastClick)> StatsAsync(string code, string? domain) =>
-        clicks.StatsAsync(code, domain);
+    public sealed record Detail(
+        long Total,
+        DateTime? LastClick,
+        IReadOnlyList<(string Day, long Count)> Daily,
+        IReadOnlyList<(string Referer, long Count)> TopReferrers);
+
+    public async Task<Detail> DetailAsync(string code, string? domain)
+    {
+        var (total, last) = await clicks.StatsAsync(code, domain);
+        var daily = await clicks.DailyAsync(code, domain);
+        var referrers = await clicks.TopReferrersAsync(code, domain);
+        return new Detail(total, last, daily, referrers);
+    }
 }

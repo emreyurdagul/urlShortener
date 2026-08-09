@@ -28,7 +28,15 @@ builder.Services.AddOpenTelemetry()
     .ConfigureResource(r => r.AddService("gateway"))
     .WithTracing(t => t
         .AddAspNetCoreInstrumentation(o => o.Filter = ctx =>
-            ctx.GetEndpoint() is null && !ctx.Request.Path.StartsWithSegments("/health"))
+        {
+            // Path-based: the endpoint isn't resolved yet when the filter runs, so
+            // GetEndpoint() would be null for everything. Exclude the gateway's own
+            // infra routes (/metrics, /ws/metrics, /health) from traces.
+            var path = ctx.Request.Path;
+            return !path.StartsWithSegments("/metrics")
+                && !path.StartsWithSegments("/ws")
+                && !path.StartsWithSegments("/health");
+        })
         .AddHttpClientInstrumentation()
         .AddSource("Gateway.Proxy"))
     .UseOtlpExporter();

@@ -13,5 +13,6 @@ public sealed record LinkRow(string Domain, string Code, string TargetUrl, DateT
 public sealed record ClickEvent(string Domain, string Code, string? Referer, string? UserAgent, DateTime ClickedAt);
 
 public sealed record CreateLinkRequest(string Url, string? Domain, int? CodeLength, string? Code);
+public sealed record UpdateLinkRequest(string Url);
 public sealed record Credentials(string Email, string Password);
 public sealed record UpgradeRequest(string Plan);

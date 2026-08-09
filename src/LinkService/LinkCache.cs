@@ -56,6 +56,13 @@ public sealed class LinkCache
     }
 
     /// <summary>
+    /// Drops an entry after an edit or delete. Best-effort per replica: other
+    /// replicas' copies fall out on their own TTL, so a mutation is only fully
+    /// consistent across the pool within the cache TTL.
+    /// </summary>
+    public void Remove(string domain, string code) => _entries.TryRemove(Key(domain, code), out _);
+
+    /// <summary>
     /// Best-effort bound: drop expired entries first, then a slice of arbitrary
     /// ones if still at capacity. Not strict LRU, but keeps memory flat without
     /// locking the whole map.

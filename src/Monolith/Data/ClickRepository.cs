@@ -21,6 +21,33 @@ public sealed class ClickRepository(NpgsqlDataSource db)
             events);
     }
 
+    public async Task<IReadOnlyList<(string Day, long Count)>> DailyAsync(string code, string? domain)
+    {
+        await using var conn = await db.OpenConnectionAsync();
+        var rows = await conn.QueryAsync<(string, long)>(
+            """
+            SELECT to_char(date_trunc('day', clicked_at), 'YYYY-MM-DD'), COUNT(*)
+            FROM clicks
+            WHERE code = @code AND (@domain IS NULL OR domain = @domain)
+              AND clicked_at >= now() - interval '7 days'
+            GROUP BY 1 ORDER BY 1
+            """, new { code, domain });
+        return rows.ToList();
+    }
+
+    public async Task<IReadOnlyList<(string Referer, long Count)>> TopReferrersAsync(string code, string? domain)
+    {
+        await using var conn = await db.OpenConnectionAsync();
+        var rows = await conn.QueryAsync<(string, long)>(
+            """
+            SELECT COALESCE(NULLIF(referer, ''), 'direct'), COUNT(*)
+            FROM clicks
+            WHERE code = @code AND (@domain IS NULL OR domain = @domain)
+            GROUP BY 1 ORDER BY 2 DESC LIMIT 5
+            """, new { code, domain });
+        return rows.ToList();
+    }
+
     public async Task<(long Total, DateTime? LastClick)> StatsAsync(string code, string? domain)
     {
         await using var conn = await db.OpenConnectionAsync();
