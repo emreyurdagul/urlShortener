@@ -34,6 +34,7 @@ const en: Dict = {
   "common.error": "Something went wrong",
 
   "err.url_invalid": "Enter a valid http(s) URL.",
+  "err.url_unsafe": "That URL points to a private or blocked host.",
   "err.domain_invalid": "That domain isn't available.",
   "err.quota_exceeded": "Your {plan} plan allows {quota} links. Upgrade for more.",
   "err.vanity_forbidden": "Custom codes are a Pro feature.",
@@ -79,6 +80,7 @@ const en: Dict = {
   "dash.detailReferrers": "Top referrers",
   "dash.detailNone": "No clicks yet",
   "dash.direct": "direct",
+  "dash.loadMore": "Load more",
 
   "auth.welcomeBack": "Welcome back",
   "auth.createAccount": "Create an account",
@@ -148,6 +150,7 @@ const tr: Dict = {
   "common.error": "Bir şeyler ters gitti",
 
   "err.url_invalid": "Geçerli bir http(s) URL gir.",
+  "err.url_unsafe": "Bu URL özel/engelli bir sunucuya işaret ediyor.",
   "err.domain_invalid": "Bu alan adı kullanılamıyor.",
   "err.quota_exceeded": "{plan} planında {quota} link hakkın var. Yükselt.",
   "err.vanity_forbidden": "Özel kod Pro özelliğidir.",
@@ -193,6 +196,7 @@ const tr: Dict = {
   "dash.detailReferrers": "En çok yönlendiren",
   "dash.detailNone": "Henüz tıklama yok",
   "dash.direct": "doğrudan",
+  "dash.loadMore": "Daha fazla",
 
   "auth.welcomeBack": "Tekrar hoş geldin",
   "auth.createAccount": "Hesap oluştur",
@@ -262,6 +266,7 @@ const de: Dict = {
   "common.error": "Etwas ist schiefgelaufen",
 
   "err.url_invalid": "Gib eine gültige http(s)-URL ein.",
+  "err.url_unsafe": "Diese URL zeigt auf einen privaten oder gesperrten Host.",
   "err.domain_invalid": "Diese Domain ist nicht verfügbar.",
   "err.quota_exceeded": "Dein {plan}-Tarif erlaubt {quota} Links. Upgrade für mehr.",
   "err.vanity_forbidden": "Eigene Codes sind ein Pro-Feature.",
@@ -307,6 +312,7 @@ const de: Dict = {
   "dash.detailReferrers": "Top-Referrer",
   "dash.detailNone": "Noch keine Klicks",
   "dash.direct": "direkt",
+  "dash.loadMore": "Mehr laden",
 
   "auth.welcomeBack": "Willkommen zurück",
   "auth.createAccount": "Konto erstellen",
@@ -376,6 +382,7 @@ const ar: Dict = {
   "common.error": "حدث خطأ ما",
 
   "err.url_invalid": "أدخل رابط http(s) صالحًا.",
+  "err.url_unsafe": "هذا الرابط يشير إلى مضيف خاص أو محظور.",
   "err.domain_invalid": "هذا النطاق غير متاح.",
   "err.quota_exceeded": "خطة {plan} تسمح بـ {quota} رابطًا. رقِّ خطتك.",
   "err.vanity_forbidden": "الرموز المخصصة ميزة Pro.",
@@ -421,6 +428,7 @@ const ar: Dict = {
   "dash.detailReferrers": "أهم المُحيلين",
   "dash.detailNone": "لا نقرات بعد",
   "dash.direct": "مباشر",
+  "dash.loadMore": "تحميل المزيد",
 
   "auth.welcomeBack": "مرحبًا بعودتك",
   "auth.createAccount": "إنشاء حساب",

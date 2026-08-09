@@ -56,19 +56,25 @@ app.MapGet("/api/domains", (DomainConfig domains) =>
     Results.Ok(new { domains = domains.All, @default = domains.Default }));
 
 // The caller's own links; the gateway supplies the trusted owner id.
-app.MapGet("/api/links", async (NpgsqlDataSource db, HttpRequest http) =>
+app.MapGet("/api/links", async (NpgsqlDataSource db, HttpRequest http, int? page, int? pageSize) =>
 {
     if (!long.TryParse(http.Headers[IdentityHeaders.UserId].FirstOrDefault(), out var owner))
         return Results.Unauthorized();
 
+    var p = Math.Max(1, page ?? 1);
+    var size = Math.Clamp(pageSize ?? 20, 1, 100);
     var scheme = http.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? http.Scheme;
     await using var conn = await db.OpenConnectionAsync();
+
+    var total = await conn.ExecuteScalarAsync<long>(
+        "SELECT COUNT(*) FROM links WHERE owner_id = @owner", new { owner });
     var rows = await conn.QueryAsync<LinkRow>(
         """
         SELECT domain AS Domain, code AS Code, target_url AS TargetUrl, created_at AS CreatedAt
         FROM links WHERE owner_id = @owner ORDER BY created_at DESC
+        LIMIT @size OFFSET @offset
         """,
-        new { owner });
+        new { owner, size, offset = (p - 1) * size });
 
     var links = rows.Select(r => new
     {
@@ -79,7 +85,7 @@ app.MapGet("/api/links", async (NpgsqlDataSource db, HttpRequest http) =>
         shortUrl = $"{scheme}://{r.Domain}/{r.Code}",
         qrUrl = $"/api/links/{r.Code}/qr",
     });
-    return Results.Ok(new { links });
+    return Results.Ok(new { links, page = p, pageSize = size, total, hasMore = (long)p * size < total });
 });
 
 // A PNG QR code for the short URL. Rendered with QRCoder's pure-managed PNG
@@ -103,6 +109,8 @@ app.MapPost("/api/links", async (CreateLinkRequest req, NpgsqlDataSource db, Dom
     if (!Uri.TryCreate(req.Url, UriKind.Absolute, out var target) ||
         target.Scheme is not ("http" or "https"))
         return Results.BadRequest(new { code = "url_invalid", error = "URL must be an absolute http(s) URL." });
+    if (!await LinkSafety.IsPublicAsync(target))
+        return Results.BadRequest(new { code = "url_unsafe", error = "That URL points to a private or unreachable host." });
 
     var domain = (req.Domain ?? domains.Default).ToLowerInvariant();
     if (!domains.Contains(domain))
@@ -230,6 +238,8 @@ app.MapPut("/api/links/{code}", async (string code, string? domain, UpdateLinkRe
         return Results.Json(new { code = "unauthenticated", error = "Sign in required." }, statusCode: StatusCodes.Status401Unauthorized);
     if (!Uri.TryCreate(req.Url, UriKind.Absolute, out var target) || target.Scheme is not ("http" or "https"))
         return Results.BadRequest(new { code = "url_invalid", error = "URL must be an absolute http(s) URL." });
+    if (!await LinkSafety.IsPublicAsync(target))
+        return Results.BadRequest(new { code = "url_unsafe", error = "That URL points to a private or unreachable host." });
 
     var dom = (domain ?? http.Headers["X-Forwarded-Host"].FirstOrDefault() ?? "").ToLowerInvariant();
     await using var conn = await db.OpenConnectionAsync();

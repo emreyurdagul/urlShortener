@@ -6,15 +6,16 @@ namespace Monolith;
 /// <summary>Data-access layer for the links table (the old link-service's DB work).</summary>
 public sealed class LinkRepository(NpgsqlDataSource db)
 {
-    public async Task<IReadOnlyList<LinkRow>> ListByOwnerAsync(long ownerId)
+    public async Task<IReadOnlyList<LinkRow>> ListByOwnerAsync(long ownerId, int size, int offset)
     {
         await using var conn = await db.OpenConnectionAsync();
         var rows = await conn.QueryAsync<LinkRow>(
             """
             SELECT domain AS Domain, code AS Code, target_url AS TargetUrl, created_at AS CreatedAt
             FROM links WHERE owner_id = @ownerId ORDER BY created_at DESC
+            LIMIT @size OFFSET @offset
             """,
-            new { ownerId });
+            new { ownerId, size, offset });
         return rows.ToList();
     }
 

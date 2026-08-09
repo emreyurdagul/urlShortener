@@ -23,12 +23,15 @@ public sealed class LinkController(LinkAppService links) : ControllerBase
         Ok(new { domains = links.Domains.All, @default = links.Domains.Default });
 
     [HttpGet("/api/links")]
-    public async Task<IActionResult> List()
+    public async Task<IActionResult> List([FromQuery] int? page, [FromQuery] int? pageSize)
     {
         if (CurrentUser is not { } user)
             return Unauthorized();
 
-        var rows = await links.ListAsync(user.UserId);
+        var p = Math.Max(1, page ?? 1);
+        var size = Math.Clamp(pageSize ?? 20, 1, 100);
+        var total = await links.CountAsync(user.UserId);
+        var rows = await links.ListAsync(user.UserId, size, (p - 1) * size);
         var result = rows.Select(r => new
         {
             r.Code,
@@ -38,7 +41,7 @@ public sealed class LinkController(LinkAppService links) : ControllerBase
             shortUrl = $"{Scheme}://{r.Domain}/{r.Code}",
             qrUrl = $"/api/links/{r.Code}/qr",
         });
-        return Ok(new { links = result });
+        return Ok(new { links = result, page = p, pageSize = size, total, hasMore = (long)p * size < total });
     }
 
     [HttpGet("/api/links/{code}/qr")]
@@ -86,6 +89,8 @@ public sealed class LinkController(LinkAppService links) : ControllerBase
             return Unauthorized(new { code = "unauthenticated", error = "Sign in required." });
         if (!Uri.TryCreate(req.Url, UriKind.Absolute, out var target) || target.Scheme is not ("http" or "https"))
             return BadRequest(new { code = "url_invalid", error = "URL must be an absolute http(s) URL." });
+        if (!await LinkSafety.IsPublicAsync(target))
+            return BadRequest(new { code = "url_unsafe", error = "That URL points to a private or unreachable host." });
 
         var dom = (domain ?? Request.Headers["X-Forwarded-Host"].FirstOrDefault() ?? Request.Host.Value ?? "").ToLowerInvariant();
         return await links.UpdateAsync(dom, code, user.UserId, target.AbsoluteUri)

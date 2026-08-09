@@ -69,28 +69,37 @@ export default function DashboardPage() {
   const [connected, setConnected] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const history = useRef<number[]>([]);
+
+  async function loadPage(next: number) {
+    const d = await api<{ links: LinkItem[]; hasMore: boolean }>(`/api/links?page=${next}&pageSize=20`);
+    setLinks((prev) => (next === 1 ? d.links : [...prev, ...d.links]));
+    setPage(next);
+    setHasMore(d.hasMore);
+    const entries = await Promise.all(
+      d.links.map((l) =>
+        api<Stats & { code: string }>(
+          `/api/analytics/${encodeURIComponent(l.code)}?domain=${encodeURIComponent(l.domain)}`,
+        )
+          .then((s) => [l.code, s] as const)
+          .catch(() => [l.code, { total: 0, lastClick: null }] as const),
+      ),
+    );
+    setStats((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+  }
 
   useEffect(() => {
     if (!getSession()) {
       router.push("/login");
       return;
     }
-    api<{ links: LinkItem[] }>("/api/links")
-      .then((d) => {
-        setLinks(d.links);
-        Promise.all(
-          d.links.map((l) =>
-            api<Stats & { code: string }>(
-              `/api/analytics/${encodeURIComponent(l.code)}?domain=${encodeURIComponent(l.domain)}`,
-            )
-              .then((s) => [l.code, s] as const)
-              .catch(() => [l.code, { total: 0, lastClick: null }] as const),
-          ),
-        ).then((entries) => setStats(Object.fromEntries(entries)));
-      })
+    loadPage(1)
       .catch(() => {})
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   useEffect(() => {
@@ -293,6 +302,24 @@ export default function DashboardPage() {
               })}
             </tbody>
           </table>
+        )}
+        {hasMore && (
+          <div style={{ textAlign: "center", marginTop: 18 }}>
+            <button
+              className="ghost"
+              disabled={loadingMore}
+              onClick={async () => {
+                setLoadingMore(true);
+                try {
+                  await loadPage(page + 1);
+                } finally {
+                  setLoadingMore(false);
+                }
+              }}
+            >
+              {loadingMore ? "…" : t("dash.loadMore")}
+            </button>
+          </div>
         )}
       </div>
     </div>

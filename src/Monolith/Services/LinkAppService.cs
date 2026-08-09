@@ -32,6 +32,8 @@ public sealed class LinkAppService(
         if (!Uri.TryCreate(req.Url, UriKind.Absolute, out var target) ||
             target.Scheme is not ("http" or "https"))
             return new(false, new { code = "url_invalid", error = "URL must be an absolute http(s) URL." }, 400, null, null);
+        if (!await LinkSafety.IsPublicAsync(target))
+            return new(false, new { code = "url_unsafe", error = "That URL points to a private or unreachable host." }, 400, null, null);
 
         var domain = (req.Domain ?? domains.Default).ToLowerInvariant();
         if (!domains.Contains(domain))
@@ -102,7 +104,9 @@ public sealed class LinkAppService(
         return new(false, new { code = "code_alloc_failed", error = "Could not allocate a unique code, please try again." }, 500, null, null);
     }
 
-    public Task<IReadOnlyList<LinkRow>> ListAsync(long ownerId) => links.ListByOwnerAsync(ownerId);
+    public Task<IReadOnlyList<LinkRow>> ListAsync(long ownerId, int size, int offset) => links.ListByOwnerAsync(ownerId, size, offset);
+
+    public Task<long> CountAsync(long ownerId) => links.CountByOwnerAsync(ownerId);
 
     /// <summary>Deletes an owned link and drops its cache entry. False if not found/owner.</summary>
     public async Task<bool> DeleteAsync(string domain, string code, long ownerId)
