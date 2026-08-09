@@ -1,0 +1,29 @@
+# Minimal single-binary Tempo: receives traces over OTLP (gRPC 4317 / HTTP 4318)
+# and serves queries on 3200 for Grafana. Storage is local + ephemeral (/tmp) —
+# fine for a showcase; traces reset on restart. Retention 24h.
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 24h
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /tmp/tempo/blocks
+    wal:
+      path: /tmp/tempo/wal

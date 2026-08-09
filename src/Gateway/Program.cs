@@ -1,4 +1,7 @@
 using Gateway;
+using OpenTelemetry;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -17,6 +20,18 @@ builder.Services.AddHostedService<HealthMonitor>();
 var rateCapacity = builder.Configuration.GetValue("RATE_LIMIT_BURST", 60);
 var rateRefill = builder.Configuration.GetValue("RATE_LIMIT_PER_SECOND", 30.0);
 builder.Services.AddSingleton(new TokenBucketRateLimiter(rateCapacity, rateRefill));
+
+// Distributed tracing: a server span per proxied request + a client span per
+// backend hop (Gateway.Proxy), exported over OTLP to Tempo. Only proxied traffic
+// is traced — /metrics, /ws/metrics and /health are excluded.
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService("gateway"))
+    .WithTracing(t => t
+        .AddAspNetCoreInstrumentation(o => o.Filter = ctx =>
+            ctx.GetEndpoint() is null && !ctx.Request.Path.StartsWithSegments("/health"))
+        .AddHttpClientInstrumentation()
+        .AddSource("Gateway.Proxy"))
+    .UseOtlpExporter();
 
 var app = builder.Build();
 

@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Identity;
 using Monolith;
 using Npgsql;
+using OpenTelemetry;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -37,6 +40,16 @@ builder.Services.AddSingleton<AnalyticsAppService>();
 builder.Services.AddHostedService<ClickWriter>();
 
 builder.Services.AddControllers();
+
+// Distributed tracing → OTLP → Tempo (endpoint from OTEL_EXPORTER_OTLP_ENDPOINT).
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService("monolith"))
+    .WithTracing(t => t
+        .AddAspNetCoreInstrumentation(o => o.Filter = ctx =>
+            !ctx.Request.Path.StartsWithSegments("/health") &&
+            !ctx.Request.Path.StartsWithSegments("/metrics"))
+        .AddNpgsql())
+    .UseOtlpExporter();
 
 var app = builder.Build();
 

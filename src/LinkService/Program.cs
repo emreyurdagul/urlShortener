@@ -1,6 +1,9 @@
 using Dapper;
 using LinkService;
 using Npgsql;
+using OpenTelemetry;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,6 +19,18 @@ builder.Services.AddSingleton<LinkCache>();
 builder.Services.AddSingleton<ClickRecorder>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<ClickShipper>();
+
+// Distributed tracing: server spans + outgoing HTTP (to analytics) + Postgres
+// spans, exported over OTLP (endpoint from OTEL_EXPORTER_OTLP_ENDPOINT) to Tempo.
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService("link-service"))
+    .WithTracing(t => t
+        .AddAspNetCoreInstrumentation(o => o.Filter = ctx =>
+            !ctx.Request.Path.StartsWithSegments("/health") &&
+            !ctx.Request.Path.StartsWithSegments("/metrics"))
+        .AddHttpClientInstrumentation()
+        .AddNpgsql())
+    .UseOtlpExporter();
 
 var linksCreated = Metrics.CreateCounter(
     "links_created_total", "Short links created.",

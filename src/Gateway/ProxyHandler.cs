@@ -1,12 +1,17 @@
 using System.Diagnostics;
 using System.Net;
 using Microsoft.Extensions.Primitives;
+using OpenTelemetry;
+using OpenTelemetry.Context.Propagation;
 
 namespace Gateway;
 
 public sealed class ProxyHandler(RouteTable routes, ILogger<ProxyHandler> logger)
 {
     private static readonly TimeSpan BackendTimeout = TimeSpan.FromSeconds(10);
+
+    // Client span per backend hop; the name is registered via AddSource("Gateway.Proxy").
+    private static readonly ActivitySource Trace = new("Gateway.Proxy");
 
     private static readonly HttpMessageInvoker Client = new(new SocketsHttpHandler
     {
@@ -37,6 +42,10 @@ public sealed class ProxyHandler(RouteTable routes, ILogger<ProxyHandler> logger
         {
             var backend = pool.Next();
             var stopwatch = Stopwatch.StartNew();
+            using var proxyActivity = Trace.StartActivity("proxy backend", ActivityKind.Client);
+            proxyActivity?.SetTag("gateway.pool", pool.Name);
+            proxyActivity?.SetTag("gateway.backend", backend.Url);
+            proxyActivity?.SetTag("http.request.method", context.Request.Method);
             using var request = BuildRequest(context, backend.Url, hasBody);
 
             // The timeout covers connect + backend processing up to response
@@ -154,6 +163,17 @@ public sealed class ProxyHandler(RouteTable routes, ILogger<ProxyHandler> logger
         request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", forwardedProto);
         if (incoming.Host.HasValue)
             request.Headers.TryAddWithoutValidation("X-Forwarded-Host", incoming.Host.Value);
+
+        // Propagate the current trace context to the backend. The raw
+        // HttpMessageInvoker doesn't auto-inject W3C headers the way HttpClient
+        // does, so the gateway does it explicitly — this is what stitches the
+        // backend's spans into the same trace as the gateway's.
+        request.Headers.Remove("traceparent");
+        request.Headers.Remove("tracestate");
+        Propagators.DefaultTextMapPropagator.Inject(
+            new PropagationContext(Activity.Current?.Context ?? default, Baggage.Current),
+            request.Headers,
+            static (headers, key, value) => headers.TryAddWithoutValidation(key, value));
 
         return request;
     }

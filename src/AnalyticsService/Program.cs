@@ -1,6 +1,9 @@
 using AnalyticsService;
 using Dapper;
 using Npgsql;
+using OpenTelemetry;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -8,6 +11,17 @@ var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Db")
     ?? "Host=localhost;Username=shortener;Password=shortener;Database=shortener";
 builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
+
+// Distributed tracing → OTLP → Tempo (endpoint from OTEL_EXPORTER_OTLP_ENDPOINT).
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService("analytics-service"))
+    .WithTracing(t => t
+        .AddAspNetCoreInstrumentation(o => o.Filter = ctx =>
+            !ctx.Request.Path.StartsWithSegments("/health") &&
+            !ctx.Request.Path.StartsWithSegments("/metrics"))
+        .AddHttpClientInstrumentation()
+        .AddNpgsql())
+    .UseOtlpExporter();
 
 var app = builder.Build();
 
