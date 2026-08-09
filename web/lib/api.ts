@@ -104,10 +104,14 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}): Pr
   };
 
   let res = await send(getSession()?.token);
-  // Access token expired? Refresh once and retry transparently.
-  if (res.status === 401 && getSession()?.refreshToken) {
-    const fresh = await tryRefresh();
+  // Access token rejected while signed in? Refresh once and retry transparently.
+  // If there's no refresh token (a stale pre-refresh session) or the refresh
+  // fails, the session is dead — drop it so the UI reflects signed-out instead
+  // of silently 401ing every request.
+  if (res.status === 401 && getSession()) {
+    const fresh = getSession()?.refreshToken ? await tryRefresh() : null;
     if (fresh) res = await send(fresh);
+    else clearSession();
   }
 
   const text = await res.text();

@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, getSession } from "@/lib/api";
+import { api, ApiError, getSession } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
 type LinkItem = {
@@ -97,7 +97,9 @@ export default function DashboardPage() {
       return;
     }
     loadPage(1)
-      .catch(() => {})
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 401) router.push("/login");
+      })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
