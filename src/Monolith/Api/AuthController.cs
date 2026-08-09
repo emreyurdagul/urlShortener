@@ -14,13 +14,13 @@ public sealed class AuthController(AuthAppService auth) : ControllerBase
     public async Task<IActionResult> Register(Credentials req)
     {
         if (string.IsNullOrWhiteSpace(req.Email) || !req.Email.Contains('@'))
-            return BadRequest(new { error = "A valid email is required." });
+            return BadRequest(new { code = "email_invalid", error = "A valid email is required." });
         if (req.Password is not { Length: >= 8 })
-            return BadRequest(new { error = "Password must be at least 8 characters." });
+            return BadRequest(new { code = "password_short", error = "Password must be at least 8 characters.", min = 8 });
 
         var result = await auth.RegisterAsync(req.Email, req.Password);
         return result is null
-            ? Conflict(new { error = "Email already registered." })
+            ? Conflict(new { code = "email_taken", error = "Email already registered." })
             : Ok(new { token = result.Token, expiresAt = result.ExpiresAt, plan = result.Plan });
     }
 
@@ -29,7 +29,7 @@ public sealed class AuthController(AuthAppService auth) : ControllerBase
     {
         var result = await auth.LoginAsync(req.Email, req.Password);
         return result is null
-            ? Unauthorized()
+            ? Unauthorized(new { code = "bad_credentials", error = "Wrong email or password." })
             : Ok(new { token = result.Token, expiresAt = result.ExpiresAt, plan = result.Plan });
     }
 
@@ -40,15 +40,15 @@ public sealed class AuthController(AuthAppService auth) : ControllerBase
     public async Task<IActionResult> Upgrade(UpgradeRequest req)
     {
         if (HttpContext.Items[AuthMiddleware.ItemKey] is not UserIdentity user)
-            return Unauthorized();
+            return Unauthorized(new { code = "unauthenticated", error = "Sign in required." });
 
         var plan = Plans.Normalize(req.Plan);
         if (!Plans.IsValid(plan) || plan == Plans.Free)
-            return BadRequest(new { error = "Choose a paid tier: 'plus' or 'pro'." });
+            return BadRequest(new { code = "plan_invalid", error = "Choose a paid tier: 'plus' or 'pro'." });
 
         var result = await auth.UpgradeAsync(user.UserId, plan);
         return result is null
-            ? NotFound()
+            ? NotFound(new { code = "user_not_found", error = "Account not found." })
             : Ok(new { token = result.Token, expiresAt = result.ExpiresAt, plan = result.Plan });
     }
 }

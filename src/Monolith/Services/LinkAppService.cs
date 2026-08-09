@@ -23,17 +23,19 @@ public sealed class LinkAppService(
 
     public DomainConfig Domains => domains;
 
-    public sealed record CreateResult(bool Ok, string? Error, int StatusCode, string? Code, string? Domain);
+    // ErrorBody carries the localizable error payload ({ code, error, ...params })
+    // the controller serializes verbatim on failure; null on success.
+    public sealed record CreateResult(bool Ok, object? ErrorBody, int StatusCode, string? Code, string? Domain);
 
     public async Task<CreateResult> CreateAsync(CreateLinkRequest req, UserIdentity? owner)
     {
         if (!Uri.TryCreate(req.Url, UriKind.Absolute, out var target) ||
             target.Scheme is not ("http" or "https"))
-            return new CreateResult(false, "url must be an absolute http(s) URL.", 400, null, null);
+            return new(false, new { code = "url_invalid", error = "URL must be an absolute http(s) URL." }, 400, null, null);
 
         var domain = (req.Domain ?? domains.Default).ToLowerInvariant();
         if (!domains.Contains(domain))
-            return new CreateResult(false, $"domain '{domain}' is not served here.", 400, null, null);
+            return new(false, new { code = "domain_invalid", error = $"Domain '{domain}' is not served here.", domain }, 400, null, null);
 
         var plan = Plans.Normalize(owner?.Plan);
 
@@ -48,8 +50,7 @@ public sealed class LinkAppService(
                 if (owned >= limit)
                 {
                     QuotaRejected.Inc();
-                    return new CreateResult(false,
-                        $"Plan '{plan}' allows {limit} links; upgrade for more.", 403, null, null);
+                    return new(false, new { code = "quota_exceeded", error = $"Plan '{plan}' allows {limit} links; upgrade for more.", plan, quota = limit, used = owned }, 403, null, null);
                 }
             }
         }
@@ -59,31 +60,29 @@ public sealed class LinkAppService(
         if (!string.IsNullOrWhiteSpace(req.Code))
         {
             if (!Plans.AllowsVanity(plan))
-                return new CreateResult(false, "Custom codes are a Pro feature.", 403, null, null);
+                return new(false, new { code = "vanity_forbidden", error = "Custom codes are a Pro feature." }, 403, null, null);
             if (!CodeGenerator.IsValidVanity(req.Code))
-                return new CreateResult(false, "Custom code must be 1-32 chars of letters, digits, '-' or '_'.", 400, null, null);
+                return new(false, new { code = "vanity_invalid", error = "Custom code must be 1-32 chars of letters, digits, '-' or '_'." }, 400, null, null);
 
             try
             {
                 await links.InsertAsync(domain, req.Code, target.AbsoluteUri, owner?.UserId);
                 Created.WithLabels(domain).Inc();
-                return new CreateResult(true, null, 201, req.Code, domain);
+                return new(true, null, 201, req.Code, domain);
             }
             catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
-                return new CreateResult(false, $"'{req.Code}' is already taken.", 409, null, null);
+                return new(false, new { code = "code_taken", error = $"'{req.Code}' is already taken.", requested = req.Code }, 409, null, null);
             }
         }
 
         // Random code: the requested length must be within the caller's tier.
         var codeLength = req.CodeLength ?? 7;
         if (codeLength is < CodeGenerator.MinLength or > CodeGenerator.MaxLength)
-            return new CreateResult(false,
-                $"codeLength must be between {CodeGenerator.MinLength} and {CodeGenerator.MaxLength}.", 400, null, null);
+            return new(false, new { code = "code_length_range", error = $"codeLength must be between {CodeGenerator.MinLength} and {CodeGenerator.MaxLength}.", min = CodeGenerator.MinLength, max = CodeGenerator.MaxLength }, 400, null, null);
         var minLength = Plans.MinCodeLength(plan);
         if (codeLength < minLength)
-            return new CreateResult(false,
-                $"{codeLength}-char codes need a higher plan; '{plan}' starts at {minLength}.", 403, null, null);
+            return new(false, new { code = "code_length_locked", error = $"{codeLength}-char codes need a higher plan; '{plan}' starts at {minLength}.", plan, minLength }, 403, null, null);
 
         for (var attempt = 0; attempt < 5; attempt++)
         {
@@ -92,7 +91,7 @@ public sealed class LinkAppService(
             {
                 await links.InsertAsync(domain, code, target.AbsoluteUri, owner?.UserId);
                 Created.WithLabels(domain).Inc();
-                return new CreateResult(true, null, 201, code, domain);
+                return new(true, null, 201, code, domain);
             }
             catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
@@ -100,7 +99,7 @@ public sealed class LinkAppService(
             }
         }
 
-        return new CreateResult(false, "Could not allocate a unique code, please try again.", 500, null, null);
+        return new(false, new { code = "code_alloc_failed", error = "Could not allocate a unique code, please try again." }, 500, null, null);
     }
 
     public Task<IReadOnlyList<LinkRow>> ListAsync(long ownerId) => links.ListByOwnerAsync(ownerId);

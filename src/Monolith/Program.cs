@@ -68,3 +68,7 @@ app.UseWhen(
 app.MapControllers();
 
 app.Run();
+
+// Exposes the implicit top-level Program to WebApplicationFactory for
+// integration tests (tests/Monolith.IntegrationTests).
+public partial class Program;

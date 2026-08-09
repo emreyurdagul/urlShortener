@@ -57,7 +57,7 @@ public sealed class LinkController(LinkAppService links) : ControllerBase
     {
         var result = await links.CreateAsync(req, CurrentUser);
         if (!result.Ok)
-            return StatusCode(result.StatusCode, new { error = result.Error });
+            return StatusCode(result.StatusCode, result.ErrorBody);
 
         return Created($"/api/links/{result.Code}", new
         {

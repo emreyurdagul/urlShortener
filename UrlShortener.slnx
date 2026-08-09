@@ -9,5 +9,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/Gateway.Tests/Gateway.Tests.csproj" />
     <Project Path="tests/LinkService.Tests/LinkService.Tests.csproj" />
+    <Project Path="tests/Monolith.IntegrationTests/Monolith.IntegrationTests.csproj" />
   </Folder>
 </Solution>
