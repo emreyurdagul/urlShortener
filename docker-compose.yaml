@@ -105,6 +105,49 @@ services:
       postgres:
         condition: service_healthy
 
+  # The monolith counterpart — same features as one layered process, on its own
+  # subdomain with its own Postgres (isolated data), so the micro-vs-mono
+  # comparison stays clean. Shares this app's JWT_SECRET/POSTGRES_PASSWORD.
+  monolith:
+    build:
+      context: .
+      dockerfile: src/Monolith/Dockerfile
+    environment:
+      ConnectionStrings__Db: Host=postgres-mono;Username=shortener;Password=${POSTGRES_PASSWORD:-shortener};Database=shortener
+      LINK_DOMAINS: mono-kisalt.etkinlikgalerim.online
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
+      RATE_LIMIT_BURST: 60
+      RATE_LIMIT_PER_SECOND: 30
+    expose:
+      - "8080"
+    networks:
+      - default
+      - coolify
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=coolify
+      - "traefik.http.routers.urlshort-mono.rule=Host(`mono-kisalt.etkinlikgalerim.online`)"
+      - traefik.http.routers.urlshort-mono.entrypoints=https
+      - traefik.http.routers.urlshort-mono.tls=true
+      - traefik.http.services.urlshort-mono.loadbalancer.server.port=8080
+    depends_on:
+      postgres-mono:
+        condition: service_healthy
+
+  postgres-mono:
+    image: 'postgres:17-alpine'
+    environment:
+      POSTGRES_USER: shortener
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shortener}
+      POSTGRES_DB: shortener
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shortener -d shortener"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - pgdata_mono:/var/lib/postgresql/data
+
   web:
     build:
       context: .
@@ -180,6 +223,7 @@ services:
 
 volumes:
   pgdata:
+  pgdata_mono:
 
 networks:
   coolify:
